@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
 import { useProfileStore } from '../src/store/profile';
@@ -14,13 +14,16 @@ export default function WelcomeScreen() {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.smallHeader}>Benvenuto in</Text>
+          <Image
+            source={require('../assets/images/icon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
           <Text style={styles.wordmark}>
-            u<Text style={{ color: colors.primary }}>H</Text>mana
+            <Text style={{ color: '#00B5A6' }}>u</Text>
+            <Text style={{ color: '#0F172A' }}>Hmana</Text>
           </Text>
-          <Text style={styles.subtitle}>
-            Il tuo assistente di salute{'\n'}per te e per i tuoi animali.
-          </Text>
+          <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
         </View>
 
         <View style={{ height: 28 }} />
@@ -34,9 +37,9 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per me</Text>
             <Text style={styles.cardSub}>Area Umano</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#5BBFB5' }]}>
-            <Text style={styles.cardEmoji}>👩</Text>
-            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>👨</Text>
+          <View style={[styles.cardImage, { backgroundColor: '#4DB6AC' }]}>
+            <Text style={{ fontSize: 38 }}>👩</Text>
+            <Text style={{ fontSize: 38, marginTop: -8 }}>👨</Text>
           </View>
         </Pressable>
 
@@ -51,9 +54,9 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per{'\n'}il mio animale</Text>
             <Text style={styles.cardSub}>Area Animale</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#E8C97A' }]}>
-            <Text style={styles.cardEmoji}>🐈</Text>
-            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>🐕</Text>
+          <View style={[styles.cardImage, { backgroundColor: '#FFCC80' }]}>
+            <Text style={{ fontSize: 38 }}>🐈</Text>
+            <Text style={{ fontSize: 38, marginTop: -8 }}>🐕</Text>
           </View>
         </Pressable>
 
@@ -77,25 +80,28 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    paddingTop: 8,
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 4,
   },
-  smallHeader: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: colors.muted,
+  logoIcon: {
+    width: 80,
+    height: 80,
+    marginBottom: 12,
   },
   wordmark: {
     fontSize: 44,
     fontWeight: '800',
-    color: colors.ink,
     letterSpacing: -1,
-    marginTop: 2,
   },
-  subtitle: {
+  tagline: {
     marginTop: 8,
-    color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6B7280',
+    textAlign: 'center',
+    letterSpacing: 0.8,
+    lineHeight: 18,
   },
   card: {
     flexDirection: 'row',
@@ -127,23 +133,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   cardImage: {
-    width: 110,
+    width: 100,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-  },
-  cardEmoji: {
-    fontSize: 52,
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-  },
-  cardEmojiBack: {
-    fontSize: 44,
-    right: 44,
-    bottom: 20,
-    opacity: 0.85,
   },
   legal: {
     marginTop: 16,
