@@ -34,9 +34,9 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per me</Text>
             <Text style={styles.cardSub}>Area Umano</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#5BBFB5' }]}>
-            <Text style={styles.cardEmoji}>👩</Text>
-            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>👨</Text>
+          <View style={[styles.cardImage, { backgroundColor: '#4DB6AC' }]}>
+            <Text style={{ fontSize: 38 }}>👩</Text>
+            <Text style={{ fontSize: 38, marginTop: -8 }}>👨</Text>
           </View>
         </Pressable>
 
@@ -51,9 +51,9 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per{'\n'}il mio animale</Text>
             <Text style={styles.cardSub}>Area Animale</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#E8C97A' }]}>
-            <Text style={styles.cardEmoji}>🐈</Text>
-            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>🐕</Text>
+          <View style={[styles.cardImage, { backgroundColor: '#FFCC80' }]}>
+            <Text style={{ fontSize: 38 }}>🐈</Text>
+            <Text style={{ fontSize: 38, marginTop: -8 }}>🐕</Text>
           </View>
         </Pressable>
 
@@ -127,23 +127,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   cardImage: {
-    width: 110,
+    width: 100,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative',
-  },
-  cardEmoji: {
-    fontSize: 52,
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-  },
-  cardEmojiBack: {
-    fontSize: 44,
-    right: 44,
-    bottom: 20,
-    opacity: 0.85,
   },
   legal: {
     marginTop: 16,
