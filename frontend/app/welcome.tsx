@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,7 +35,8 @@ export default function WelcomeScreen() {
             <Text style={styles.cardSub}>Area Umano</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#5BBFB5' }]}>
-            <Ionicons name="person" size={52} color="#fff" />
+            <Text style={styles.cardEmoji}>👩</Text>
+            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>👨</Text>
           </View>
         </Pressable>
 
@@ -52,7 +52,8 @@ export default function WelcomeScreen() {
             <Text style={styles.cardSub}>Area Animale</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#E8C97A' }]}>
-            <Ionicons name="paw" size={52} color="#fff" />
+            <Text style={styles.cardEmoji}>🐈</Text>
+            <Text style={[styles.cardEmoji, styles.cardEmojiBack]}>🐕</Text>
           </View>
         </Pressable>
 
@@ -130,6 +131,19 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  cardEmoji: {
+    fontSize: 52,
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+  },
+  cardEmojiBack: {
+    fontSize: 44,
+    right: 44,
+    bottom: 20,
+    opacity: 0.85,
   },
   legal: {
     marginTop: 16,
