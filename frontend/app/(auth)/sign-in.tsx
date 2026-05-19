@@ -56,7 +56,8 @@ export default function SignInScreen() {
             resizeMode="contain"
           />
           <Text style={styles.wordmark}>
-            u<Text style={{ color: colors.primary }}>H</Text>mana
+            <Text style={{ color: '#00B5A6' }}>u</Text>
+            <Text style={{ color: '#0F172A' }}>Hmana</Text>
           </Text>
           <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
         </View>
