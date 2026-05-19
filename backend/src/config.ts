@@ -28,15 +28,15 @@ export const config = {
     baseUrl: 'https://openrouter.ai/api/v1',
     modelPrimary: optional(
       'OPENROUTER_MODEL_PRIMARY',
-      'google/gemini-2.0-flash-exp:free',
+      'meta-llama/llama-3.3-70b-instruct:free',
     ),
     modelFallback: optional(
       'OPENROUTER_MODEL_FALLBACK',
-      'meta-llama/llama-3.3-70b-instruct:free',
+      'deepseek/deepseek-r1:free',
     ),
     modelVision: optional(
       'OPENROUTER_MODEL_VISION',
-      'google/gemini-2.0-flash-exp:free',
+      'mistralai/mistral-small-3.1-24b-instruct:free',
     ),
     referer: optional('APP_REFERER', 'https://uhmana.app'),
     title: optional('APP_TITLE', 'uHmana'),
