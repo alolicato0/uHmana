@@ -64,7 +64,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "f5e4da30-71e1-44cb-b305-856c1a920d91"
+      }
+    },
+    "owner": "albertoct"
   }
 }
