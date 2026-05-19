@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useRef, useState } from 'react';
@@ -21,6 +22,7 @@ import { colors, radii } from '../../src/theme';
 import type { ChatAttachment, ChatMessage } from '../../src/types';
 
 export default function ChatScreen() {
+  const { getToken } = useAuth();
   const { messages, sending, error, send, clear } = useChatStore();
   const [text, setText] = useState('');
   const [pending, setPending] = useState<ChatAttachment[]>([]);
@@ -57,7 +59,7 @@ export default function ChatScreen() {
     const atts = pending;
     setText('');
     setPending([]);
-    await send(t, atts);
+    await send(t, { attachments: atts, getToken });
     requestAnimationFrame(() =>
       listRef.current?.scrollToEnd({ animated: true }),
     );

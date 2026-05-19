@@ -1,3 +1,4 @@
+import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
@@ -17,6 +18,7 @@ import { chat } from '../src/services/openrouter';
 import { colors, radii } from '../src/theme';
 
 export default function ImageAnalysisScreen() {
+  const { getToken } = useAuth();
   const [uri, setUri] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,7 @@ export default function ImageAnalysisScreen() {
     setResult(null);
     try {
       const reply = await chat({
+        token: await getToken(),
         history: [
           {
             id: 'analyze-1',

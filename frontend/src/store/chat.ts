@@ -7,7 +7,14 @@ interface ChatState {
   messages: ChatMessage[];
   sending: boolean;
   error?: string;
-  send: (text: string, attachments?: ChatAttachment[]) => Promise<void>;
+  /** Passa la funzione `getToken` di Clerk per autenticarsi col backend */
+  send: (
+    text: string,
+    opts: {
+      attachments?: ChatAttachment[];
+      getToken: () => Promise<string | null>;
+    },
+  ) => Promise<void>;
   clear: () => void;
 }
 
@@ -22,7 +29,7 @@ const welcome: ChatMessage = {
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [welcome],
   sending: false,
-  send: async (text, attachments = []) => {
+  send: async (text, { attachments = [], getToken }) => {
     const trimmed = text.trim();
     if (!trimmed && attachments.length === 0) return;
     const userMsg: ChatMessage = {
@@ -38,10 +45,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       error: undefined,
     });
     try {
+      const token = await getToken();
       const context = useTimelineStore.getState().contextSummary();
       const reply = await chat({
         history: get().messages,
         extraContext: context,
+        token,
       });
       const botMsg: ChatMessage = {
         id: `a-${Date.now()}`,
