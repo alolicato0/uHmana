@@ -2,159 +2,166 @@
 
 > Il tuo assistente di salute AI, sempre con te. Per te e per i tuoi animali.
 
-App mobile **React Native + Expo + TypeScript**. Backend su **Render**, auth con **Clerk**, AI via **OpenRouter**.
+**Monorepo**:
+```
+uHmana/
+├── frontend/   # App mobile (React Native + Expo)
+└── backend/    # API (Node.js + Express + MongoDB + Clerk)
+```
 
 > ⚠️ uHmana è un servizio di **supporto informativo**. Non fornisce diagnosi né prescrizioni e non sostituisce il parere di un medico o veterinario. In emergenza chiama il **112**.
 
 ---
 
-## 🌐 Workflow 100% web-only
+## Setup 100% web-only (zero terminale)
 
-Tutto si gestisce dal browser. Mai aprire il terminale.
+### 1️⃣ MongoDB Atlas (database)
+1. Vai su [cloud.mongodb.com](https://cloud.mongodb.com) → registrati
+2. **Create deployment** → seleziona **M0 Free** → Region Frankfurt/Ireland
+3. **Security** → Quickstart:
+   - Crea Database User con password forte (salvala!)
+   - Network Access → "Allow access from anywhere" (0.0.0.0/0)
+4. **Connect** → **Drivers** → copia la connection string (formato `mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/`)
+5. Aggiungi `/uhmana` prima del `?` → es. `mongodb+srv://.../uhmana?retryWrites=true&w=majority`
+6. **Salva questa stringa** → la metterai su Render
 
-### 1. Sviluppo & test sul telefono
-1. Apri il tuo progetto su **expo.dev** (autenticati con GitHub)
-2. Push del codice → Expo rileva il repo
-3. Sul telefono installi **Expo Go** (Play Store / App Store)
-4. Da expo.dev clicchi "Open in Expo Go" → QR code → app live
-5. Ogni salvataggio nel codice ricarica l'app sul telefono
+### 2️⃣ Clerk (auth)
+1. [dashboard.clerk.com](https://dashboard.clerk.com) → registrati
+2. **Create application** → nome "uHmana" → abilita "Email", "Google", "Apple"
+3. **API Keys**:
+   - `Publishable Key` (`pk_test_...`) → andrà su **Expo**
+   - `Secret Key` (`sk_test_...`) → andrà su **Render**
 
-### 2. Build APK/IPA per i tester
-Da expo.dev:
-1. **Builds** → New build → Profilo `preview`
-2. Aspetti ~15min, scarichi APK dal browser
-3. Per iOS: profilo `production` + Apple Developer account ($99/anno)
+### 3️⃣ OpenRouter (AI)
+1. [openrouter.ai](https://openrouter.ai) → registrati con Google
+2. **Keys** → Create Key → nome "uhmana-backend"
+3. Copia (`sk-or-v1-...`) → andrà su **Render**
 
-### 3. Update OTA (over-the-air)
-Cambi il codice → push → da expo.dev → **EAS Update** → tutti gli utenti ricevono l'update senza ripassare per gli store.
+### 4️⃣ Render (backend)
+1. [render.com](https://render.com) → registrati con GitHub
+2. **New +** → **Web Service** → connetti il repo `alolicato0/uHmana`
+3. Configura:
+   - **Name**: `uhmana-api`
+   - **Region**: Frankfurt
+   - **Branch**: `claude/create-uhmana-app-SF02w` (o `main` dopo il merge)
+   - **Root Directory**: `backend` ← IMPORTANTE
+   - **Runtime**: `Node`
+   - **Build Command**: `npm install && npm run build`
+   - **Start Command**: `npm start`
+   - **Instance Type**: **Free**
+4. **Environment Variables** → aggiungi tutte queste:
+   | Key | Value |
+   |---|---|
+   | `MONGODB_URI` | la stringa di MongoDB Atlas |
+   | `CLERK_SECRET_KEY` | `sk_test_...` da Clerk |
+   | `CLERK_PUBLISHABLE_KEY` | `pk_test_...` da Clerk |
+   | `OPENROUTER_API_KEY` | `sk-or-v1-...` da OpenRouter |
+   | `CORS_ORIGINS` | `*` (per ora) |
+5. **Create Web Service** → aspetta il primo deploy (~3 min)
+6. L'URL sarà tipo `https://uhmana-api.onrender.com` → salvalo
 
-### 4. Variabili d'ambiente
-- Quelle pubbliche (`EXPO_PUBLIC_*`) le setti su expo.dev → Project Settings → Environment variables
-- Quelle private (es. `OPENROUTER_API_KEY`) le setti su Render → Service → Environment
+> Tip: c'è già un `render.yaml` nel repo. Da "Blueprints" puoi anche fare deploy con 1 click — ti chiederà solo i secret da incollare.
+
+### 5️⃣ Expo (frontend mobile)
+1. [expo.dev](https://expo.dev) → registrati
+2. **Create Project** → connetti GitHub → repo `alolicato0/uHmana`
+3. **Project Settings** → **Root directory**: `frontend` ← IMPORTANTE
+4. **Project Settings** → **Environment variables** → aggiungi:
+   | Key | Value | Environment |
+   |---|---|---|
+   | `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` | `pk_test_...` | tutte |
+   | `EXPO_PUBLIC_API_URL` | `https://uhmana-api.onrender.com` | tutte |
+
+### 6️⃣ Test sul telefono
+1. Installa **Expo Go** dal Play Store / App Store
+2. Su expo.dev → progetto uHmana → **Start development server** (o usa GitHub Actions integration)
+3. Scansiona il QR code con Expo Go
+4. App live, modifichi codice → ricarica automatica
 
 ---
 
-## Stack
+## Riassunto credenziali
 
-| Componente | Servizio | Web-only |
+| Cosa | Dove | Va su |
 |---|---|---|
-| Mobile app | **React Native + Expo SDK 54** | ✅ expo.dev |
-| Auth | **Clerk** | ✅ dashboard.clerk.com |
-| Backend API | **Render** (Node.js) | ✅ dashboard.render.com |
-| Database | **Postgres su Render** | ✅ Render dashboard |
-| AI | **OpenRouter** (proxy via backend) | ✅ openrouter.ai |
-| Push notifications | **Expo Push** | ✅ built-in |
+| MongoDB connection string | cloud.mongodb.com | Render `MONGODB_URI` |
+| Clerk Publishable Key | dashboard.clerk.com | Expo + Render |
+| Clerk Secret Key | dashboard.clerk.com | Render (mai su Expo!) |
+| OpenRouter API Key | openrouter.ai | Render (mai su Expo!) |
+| Render API URL | render.com (auto-generato) | Expo `EXPO_PUBLIC_API_URL` |
 
-## Modelli OpenRouter consigliati
+---
 
-Il client chiama il **backend Render**, che inoltra a OpenRouter (la API key non finisce mai sul telefono). Strategia: **primario gratis → fallback automatico se rate-limited**.
+## Endpoint backend
+
+| Metodo | Path | Descrizione |
+|---|---|---|
+| GET | `/health` | Health check (no auth) |
+| POST | `/api/chat` | Chat AI con allegati (proxy OpenRouter) |
+| GET/POST/PUT/DELETE | `/api/profiles` | Cartelle cliniche umani/animali |
+| GET/POST/PUT/DELETE | `/api/timeline` | Eventi salute |
+| GET/POST/PUT/DELETE | `/api/reminders` | Promemoria |
+
+Tutte le route `/api/*` richiedono header `Authorization: Bearer <clerk_jwt>`.
+
+## Schema MongoDB
+
+- `HealthProfile` — un documento per profilo (umano o animale)
+- `TimelineEvent` — eventi salute (sintomi, farmaci, visite, esami, vaccini)
+- `Reminder` — promemoria con schedule (once/daily/weekly/monthly)
+- `ChatSession` — cronologia chat AI (opzionale, per "memoria")
+
+Ogni documento è scoped per `userId` (Clerk user id) → multi-tenancy automatica.
+
+## Modelli AI
 
 | Variabile | Default | Costo |
 |---|---|---|
 | `OPENROUTER_MODEL_PRIMARY` | `google/gemini-2.0-flash-exp:free` | Gratis |
 | `OPENROUTER_MODEL_FALLBACK` | `meta-llama/llama-3.3-70b-instruct:free` | Gratis |
-| `OPENROUTER_MODEL_VISION` | `google/gemini-2.0-flash-exp:free` | Gratis, supporta immagini |
+| `OPENROUTER_MODEL_VISION` | `google/gemini-2.0-flash-exp:free` | Gratis, immagini |
 
-Quando vorrai qualità superiore puoi switchare a `anthropic/claude-haiku-4-5` (~$1/M tok) o `deepseek/deepseek-chat-v3` (~$0.14/M tok).
-
-## Struttura del progetto
-
-```
-app/                          # Expo Router (file-based routing)
-├── _layout.tsx               # Root: ClerkProvider, Stack
-├── index.tsx                 # Splash + redirect
-├── welcome.tsx               # Scelta Umano/Animale
-├── (auth)/
-│   ├── sign-in.tsx
-│   └── sign-up.tsx
-├── (tabs)/
-│   ├── _layout.tsx           # Tab bar con FAB centrale
-│   ├── home.tsx              # Dashboard
-│   ├── timeline.tsx          # Storico salute
-│   ├── chat.tsx              # Chat AI multimodale
-│   └── profile.tsx           # Profilo utente
-├── add-event.tsx             # Modal: aggiungi evento timeline
-├── emergency.tsx             # Modal: SOS
-├── image-analysis.tsx        # Analisi foto AI
-├── medical-record.tsx        # Cartella clinica
-├── reports.tsx               # PDF e referti
-├── reminders.tsx             # Promemoria farmaci/visite
-└── settings.tsx              # Impostazioni
-
-src/
-├── theme/                    # Colori, radii, spacing
-├── constants/disclaimers.ts  # System prompt + warnings legali
-├── types/                    # Tipi condivisi
-├── store/                    # Zustand stores (profile, timeline, chat)
-├── services/openrouter.ts    # Client AI (chiama backend in prod)
-└── components/               # Logo, Card, PrimaryButton
-```
-
-## Schermate implementate
-
-1. **Splash** – logo animato + slogan
-2. **Welcome** – scelta Umano/Animale
-3. **Sign In / Sign Up** – Clerk con Google, Apple, email
-4. **Home** – dashboard con tile, panoramica, emergenza, promemoria
-5. **Chat AI** – multimodale, fallback model, disclaimer fisso
-6. **Analisi immagine** – upload foto + risposta AI
-7. **Cartella clinica** – patologie, terapie, allergie, vaccini (umano/animale)
-8. **Timeline** – filtri, raggruppamento per giorno
-9. **Aggiungi evento** – bottom sheet modale
-10. **Promemoria** – tabs farmaci/visite/altro
-11. **Modalità emergenza** – pulsante SOS + descrizione + call 112
-12. **Profilo** – avatar Clerk, badge Premium, logout
-13. **Impostazioni** – notifiche, privacy, lingua, tema
+Strategia: **primario → fallback automatico su 429/5xx**.
 
 ## Roadmap
 
-### MVP fase 1 (FATTO)
-- [x] UI completa 13 schermate
-- [x] Clerk Auth integrato (login email + verification code)
-- [x] Chat AI testo + immagini multimodale
-- [x] Timeline + stores zustand
+### Fase 1 — MVP (in corso)
+- [x] App UI completa (13 schermate, italiano)
+- [x] Clerk auth (email + OAuth Google/Apple da abilitare in dashboard)
+- [x] Backend Express + MongoDB su Render
+- [x] Chat AI multimodale via OpenRouter
+- [x] CRUD profili, timeline, promemoria
 - [x] System prompt rigido anti-diagnosi
+- [ ] Sostituire store Zustand seed → fetch dal backend
+- [ ] Upload media su bucket (Cloudflare R2)
+- [ ] Expo Push Notifications
 
-### MVP fase 2 (prossimi step)
-- [ ] Backend Node.js su Render: `/api/chat`, `/api/profiles`, `/api/timeline`
-- [ ] Schema Postgres + Prisma + migrations
-- [ ] OAuth Google + Apple in Clerk
-- [ ] Upload media → bucket (Cloudflare R2 o Supabase Storage)
-- [ ] Expo Push Notifications per promemoria
-
-### Fase 3
+### Fase 2 — Monetizzazione
 - [ ] AdMob banner (non invasivi)
 - [ ] RevenueCat → Premium €7,99/mese
 - [ ] Report AI mensile automatico
 - [ ] Controllo interazioni farmaci
-- [ ] Modalità famiglia (più profili)
-- [ ] Traduzione referti in linguaggio semplice
-- [ ] Export PDF dati sanitari
 
-### Fase 4
-- [ ] Marketplace medici/veterinari reali
-- [ ] Integrazione Apple Health / Google Fit
+### Fase 3 — Estensione
+- [ ] Modalità famiglia (più profili)
+- [ ] Marketplace medici/veterinari
+- [ ] Apple Health / Google Fit
 - [ ] AI Coach (alimentazione, sonno, peso)
-- [ ] Sezione "One Health" (zoonosi, tossicità, allergie crociate)
+- [ ] One Health (zoonosi, allergie crociate)
 
 ## Branding
 
-- **Nome**: `uHmana` (lowercase + H maiuscola — gioca su *Health* + *Human*)
-- **Dominio**: `uhmana.app`
+- **Nome**: `uHmana` (lowercase + H maiuscola — *Health* + *Human*)
+- **Dominio**: `uhmana.app` (da verificare disponibilità)
 - **Package**: `app.uhmana.uhmana`
-- **Palette**:
-  - Primary `#0DB09E` (teal)
-  - Secondary `#22C55E` (emerald)
-  - Accent `#5B7CFA`
-  - Warning `#F59E0B`
-  - Background `#F5F7FA`
+- **Colori**: primary `#0DB09E` · secondary `#22C55E` · bg `#F5F7FA`
 
 ## Note legali
 
-L'app **non è un dispositivo medico** ai sensi del Regolamento UE 2017/745 (MDR). Tutte le funzionalità AI sono presentate come "supporto informativo" e ogni risposta termina con un invito a consultare un professionista. Il system prompt centralizzato (`src/constants/disclaimers.ts`) impone all'AI di rifiutare diagnosi e prescrizioni.
+L'app **non è un dispositivo medico** (Reg. UE 2017/745 MDR). Tutte le risposte AI passano da un system prompt centralizzato (`backend/src/services/openrouter.ts`) che impone "supporto informativo" e rifiuta diagnosi/prescrizioni.
 
 Prima del lancio in produzione:
-- Privacy policy GDPR (dati sanitari = categoria speciale, art. 9)
+- Privacy policy GDPR (dati sanitari = art. 9, categoria speciale)
 - Termini d'uso con esclusione di responsabilità
 - Consenso esplicito al trattamento dati sanitari
-- Verifica trademark "uHmana" in IT/EU prima di registrare dominio
+- Verifica trademark "uHmana" in IT/EU (TMview.eu, EUIPO)
