@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
 import { useProfileStore } from '../src/store/profile';
@@ -9,17 +9,23 @@ export default function WelcomeScreen() {
   const setKind = useProfileStore((s) => s.setActiveKind);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ScrollView contentContainerStyle={{ padding: 24, flexGrow: 1 }}>
-        <Text style={styles.smallHeader}>Benvenuto in</Text>
-        <Text style={styles.wordmark}>
-          u<Text style={{ color: colors.primary }}>H</Text>mana
-        </Text>
-        <Text style={styles.subtitle}>
-          Il tuo assistente di salute{'\n'}per te e per i tuoi animali.
-        </Text>
 
-        <View style={{ height: 24 }} />
+        {/* Logo */}
+        <View style={styles.logoArea}>
+          <Image
+            source={require('../assets/images/icon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
+          <Text style={styles.wordmark}>
+            u<Text style={{ color: colors.primary }}>H</Text>mana
+          </Text>
+          <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
+        </View>
+
+        <View style={{ height: 32 }} />
 
         <ChoiceCard
           title="Sono qui per me"
@@ -43,19 +49,12 @@ export default function WelcomeScreen() {
           }}
         />
 
-        <View style={{ flex: 1 }} />
+        <View style={{ flex: 1, minHeight: 32 }} />
         <PrimaryButton
           label="Inizia"
           onPress={() => router.push('/(auth)/sign-in')}
         />
-        <Text
-          style={{
-            marginTop: 16,
-            fontSize: 11,
-            color: colors.muted,
-            textAlign: 'center',
-          }}
-        >
+        <Text style={styles.legal}>
           uHmana è un servizio di supporto informativo. Non sostituisce il
           parere di un medico o veterinario.
         </Text>
@@ -86,7 +85,7 @@ function ChoiceCard({
       ]}
     >
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 18, fontWeight: '600' }}>{title}</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.ink }}>{title}</Text>
         <Text style={{ color: colors.muted, marginTop: 4 }}>{subtitle}</Text>
       </View>
       <Text style={{ fontSize: 48 }}>{emoji}</Text>
@@ -95,20 +94,35 @@ function ChoiceCard({
 }
 
 const styles = StyleSheet.create({
-  smallHeader: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: colors.ink,
+  logoArea: {
+    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  logoIcon: {
+    width: 88,
+    height: 88,
+    marginBottom: 12,
   },
   wordmark: {
-    fontSize: 40,
+    fontSize: 42,
     fontWeight: '800',
     color: colors.ink,
+    letterSpacing: -1,
   },
-  subtitle: {
-    marginTop: 12,
+  tagline: {
+    marginTop: 6,
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.muted,
-    fontSize: 16,
+    textAlign: 'center',
+    letterSpacing: 0.8,
+  },
+  legal: {
+    marginTop: 16,
+    fontSize: 11,
+    color: colors.muted,
+    textAlign: 'center',
   },
   choice: {
     flexDirection: 'row',

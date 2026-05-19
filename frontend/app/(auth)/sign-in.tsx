@@ -3,6 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -41,15 +42,26 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ScrollView contentContainerStyle={{ padding: 24 }}>
-        <Pressable onPress={() => router.back()} style={{ marginBottom: 12 }}>
+        <Pressable onPress={() => router.back()} style={{ marginBottom: 8 }}>
           <Ionicons name="chevron-back" size={28} color={colors.ink} />
         </Pressable>
-        <Text style={styles.title}>Bentornato!</Text>
-        <Text style={styles.subtitle}>Accedi al tuo account</Text>
 
-        <View style={{ height: 24 }} />
+        {/* Logo */}
+        <View style={styles.logoArea}>
+          <Image
+            source={require('../../assets/images/icon.png')}
+            style={styles.logoIcon}
+            resizeMode="contain"
+          />
+          <Text style={styles.wordmark}>
+            u<Text style={{ color: colors.primary }}>H</Text>mana
+          </Text>
+          <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
+        </View>
+
+        <View style={{ height: 20 }} />
 
         <SocialButton
           icon={<Ionicons name="logo-google" size={20} color={colors.ink} />}
@@ -145,6 +157,10 @@ function SocialButton({
 }
 
 const styles = StyleSheet.create({
+  logoArea: { alignItems: 'center', marginBottom: 4 },
+  logoIcon: { width: 72, height: 72, marginBottom: 8 },
+  wordmark: { fontSize: 36, fontWeight: '800', color: colors.ink, letterSpacing: -1 },
+  tagline: { fontSize: 11, fontWeight: '600', color: colors.muted, textAlign: 'center', letterSpacing: 0.8, marginTop: 4 },
   title: { fontSize: 28, fontWeight: '800', color: colors.ink },
   subtitle: { color: colors.muted, marginTop: 4 },
   divider: {
