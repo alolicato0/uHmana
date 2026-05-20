@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as Google from 'expo-auth-session/providers/google';
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  statusCodes,
+} from '@react-native-google-signin/google-signin';
 import { Link, router } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,10 +12,6 @@ import { PrimaryButton } from '../../src/components/PrimaryButton';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, radii } from '../../src/theme';
 
-WebBrowser.maybeCompleteAuthSession();
-
-const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
-const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
 
 export default function SignInScreen() {
@@ -23,31 +22,15 @@ export default function SignInScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
-    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
-    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
-    scopes: ['openid', 'profile', 'email'],
-  });
-
   useEffect(() => {
-    if (response?.type === 'success') {
-      const accessToken = response.authentication?.accessToken;
-      if (!accessToken) return;
-      (async () => {
-        try {
-          await signInWithGoogle(accessToken);
-          router.replace('/(tabs)/home');
-        } catch (e: any) {
-          setError(e?.message ?? 'Errore login Google');
-        } finally {
-          setGoogleLoading(false);
-        }
-      })();
-    } else if (response?.type === 'error' || response?.type === 'dismiss') {
-      setGoogleLoading(false);
+    if (GOOGLE_WEB_CLIENT_ID) {
+      GoogleSignin.configure({
+        webClientId: GOOGLE_WEB_CLIENT_ID,
+        offlineAccess: false,
+        scopes: ['openid', 'profile', 'email'],
+      });
     }
-  }, [response, signInWithGoogle]);
+  }, []);
 
   const onSubmit = async () => {
     if (!email || !password) return;
@@ -64,13 +47,38 @@ export default function SignInScreen() {
   };
 
   const onGooglePress = async () => {
-    if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID) {
+    if (!GOOGLE_WEB_CLIENT_ID) {
       setError('Google login non configurato');
       return;
     }
     setGoogleLoading(true);
     setError(null);
-    await promptAsync();
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const res = await GoogleSignin.signIn();
+      const tokens = await GoogleSignin.getTokens();
+
+      if (!tokens.accessToken) {
+        throw new Error('Token Google non ricevuto');
+      }
+
+      await signInWithGoogle(tokens.accessToken);
+      router.replace('/(tabs)/home');
+    } catch (e: any) {
+      if (isErrorWithCode(e)) {
+        if (e.code === statusCodes.SIGN_IN_CANCELLED) {
+          // utente ha annullato — nessun errore
+        } else if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          setError('Google Play Services non disponibili');
+        } else {
+          setError(`Errore Google: ${e.code}`);
+        }
+      } else {
+        setError(e?.message ?? 'Errore login Google');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   return (
@@ -97,11 +105,11 @@ export default function SignInScreen() {
 
         <Pressable
           onPress={onGooglePress}
-          disabled={googleLoading || !request}
+          disabled={googleLoading}
           style={({ pressed }) => [
             styles.social,
             pressed && { opacity: 0.85 },
-            (googleLoading || !request) && { opacity: 0.5 },
+            googleLoading && { opacity: 0.5 },
           ]}
         >
           <Ionicons name="logo-google" size={20} color={colors.ink} />
