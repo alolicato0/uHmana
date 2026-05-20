@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import type { Reminder } from '../types';
+import { rescheduleAll } from '../services/notifications';
 import {
   createReminder,
   deleteReminder,
   fetchReminders,
   updateReminder,
 } from '../services/reminders';
+import type { Reminder } from '../types';
 
 type GetToken = () => Promise<string | null>;
 
@@ -18,7 +19,15 @@ interface RemindersState {
   remove: (id: string, getToken: GetToken) => Promise<void>;
 }
 
-export const useRemindersStore = create<RemindersState>((set) => ({
+async function syncNotifications(reminders: Reminder[]) {
+  try {
+    await rescheduleAll(reminders);
+  } catch {
+    // ignore notification failures
+  }
+}
+
+export const useRemindersStore = create<RemindersState>((set, get) => ({
   reminders: [],
   loading: false,
 
@@ -28,6 +37,7 @@ export const useRemindersStore = create<RemindersState>((set) => ({
       const token = await getToken();
       const reminders = await fetchReminders(token);
       set({ reminders, loading: false });
+      await syncNotifications(reminders);
     } catch {
       set({ loading: false });
     }
@@ -36,20 +46,24 @@ export const useRemindersStore = create<RemindersState>((set) => ({
   add: async (r, getToken) => {
     const token = await getToken();
     const created = await createReminder(r, token);
-    set((s) => ({ reminders: [created, ...s.reminders] }));
+    const reminders = [created, ...get().reminders];
+    set({ reminders });
+    await syncNotifications(reminders);
   },
 
   update: async (id, r, getToken) => {
     const token = await getToken();
     const updated = await updateReminder(id, r, token);
-    set((s) => ({
-      reminders: s.reminders.map((x) => (x.id === id ? updated : x)),
-    }));
+    const reminders = get().reminders.map((x) => (x.id === id ? updated : x));
+    set({ reminders });
+    await syncNotifications(reminders);
   },
 
   remove: async (id, getToken) => {
     const token = await getToken();
     await deleteReminder(id, token);
-    set((s) => ({ reminders: s.reminders.filter((r) => r.id !== id) }));
+    const reminders = get().reminders.filter((r) => r.id !== id);
+    set({ reminders });
+    await syncNotifications(reminders);
   },
 }));

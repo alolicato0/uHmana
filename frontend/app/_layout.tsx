@@ -2,11 +2,17 @@ import { ClerkLoaded, ClerkProvider } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { setupNotifications } from '../src/services/notifications';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
 export default function RootLayout() {
+  useEffect(() => {
+    void setupNotifications();
+  }, []);
+
   if (!publishableKey) {
     // eslint-disable-next-line no-console
     console.warn(
