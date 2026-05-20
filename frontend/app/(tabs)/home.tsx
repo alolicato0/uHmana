@@ -1,15 +1,10 @@
-import { useAuth } from '../../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/config/modeConfig';
+import { useAuth } from '../../src/context/AuthContext';
 import { useProfileStore } from '../../src/store/profile';
 import { useRemindersStore } from '../../src/store/reminders';
 import { colors, radii } from '../../src/theme';
@@ -21,21 +16,20 @@ export default function HomeScreen() {
   const setKind = useProfileStore((s) => s.setActiveKind);
   const getProfile = useProfileStore((s) => s.getActiveProfile);
   const profile = getProfile();
+  const mode = getMode(activeKind);
 
   const reminders = useRemindersStore((s) => s.reminders);
-  const upcomingReminders = reminders.filter((r) => r.enabled).slice(0, 3);
+  const upcoming = reminders.filter((r) => r.enabled).slice(0, 3);
 
   const firstName = user?.name?.split(' ')[0] ?? profile?.name?.split(' ')[0] ?? '';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: mode.bg }}>
       <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 32 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.greeting}>Ciao, {firstName} 👋</Text>
-            <Text style={styles.subtitle}>
-              Prenditi cura della tua salute{'\n'}e di chi ami.
-            </Text>
+            <Text style={styles.greeting}>{mode.greeting(firstName)}</Text>
+            <Text style={styles.subtitle}>{mode.subtitle}</Text>
           </View>
           <Pressable onPress={() => router.push('/reminders')}>
             <Ionicons name="notifications-outline" size={26} color={colors.ink} />
@@ -43,55 +37,28 @@ export default function HomeScreen() {
         </View>
 
         <View style={{ height: 20 }} />
-        <KindToggle kind={activeKind} onChange={setKind} />
+        <KindToggle kind={activeKind} onChange={setKind} accent={mode.primary} />
 
         <View style={{ height: 20 }} />
-        <OverviewCard />
+        <HeroCard mode={mode} />
 
         <View style={{ height: 20 }} />
         <View style={styles.grid}>
-          <FeatureTile
-            icon="chatbubble-ellipses-outline"
-            title="Chat AI"
-            subtitle="Fai una domanda"
-            color={colors.primary}
-            onPress={() => router.push('/(tabs)/chat')}
-          />
-          <FeatureTile
-            icon="folder-open-outline"
-            title="I miei dati"
-            subtitle="Cartella clinica"
-            color={colors.secondary}
-            onPress={() => router.push('/medical-record')}
-          />
-          <FeatureTile
-            icon="pulse-outline"
-            title="Timeline"
-            subtitle="Storico eventi"
-            color={colors.accent}
-            onPress={() => router.push('/(tabs)/timeline')}
-          />
-          <FeatureTile
-            icon="medkit-outline"
-            title="Promemoria"
-            subtitle="Farmaci e visite"
-            color={colors.warning}
-            onPress={() => router.push('/reminders')}
-          />
+          {mode.tiles.map((t) => (
+            <FeatureTile key={t.title} tile={t} radius={mode.cardRadius} />
+          ))}
         </View>
 
         <View style={{ height: 16 }} />
         <EmergencyCta onPress={() => router.push('/emergency')} />
 
         <View style={{ height: 24 }} />
-        <Text style={styles.sectionTitle}>Prossimi promemoria</Text>
+        <Text style={styles.sectionTitle}>{mode.upcomingSectionTitle}</Text>
         <View style={{ height: 8 }} />
-        {upcomingReminders.length === 0 ? (
-          <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', paddingVertical: 12 }}>
-            Nessun promemoria attivo
-          </Text>
+        {upcoming.length === 0 ? (
+          <Text style={styles.emptyText}>{mode.emptyUpcoming}</Text>
         ) : (
-          upcomingReminders.map((r) => (
+          upcoming.map((r) => (
             <ReminderRow key={r.id} title={r.title} time={r.schedule.time ?? r.schedule.kind} />
           ))
         )}
@@ -103,28 +70,20 @@ export default function HomeScreen() {
 function KindToggle({
   kind,
   onChange,
+  accent,
 }: {
   kind: ProfileKind;
   onChange: (k: ProfileKind) => void;
+  accent: string;
 }) {
   const Btn = ({ k, label }: { k: ProfileKind; label: string }) => {
     const active = kind === k;
     return (
       <Pressable
         onPress={() => onChange(k)}
-        style={[
-          styles.toggleBtn,
-          active && { backgroundColor: colors.primary },
-        ]}
+        style={[styles.toggleBtn, active && { backgroundColor: accent }]}
       >
-        <Text
-          style={{
-            color: active ? '#fff' : colors.ink,
-            fontWeight: '600',
-          }}
-        >
-          {label}
-        </Text>
+        <Text style={{ color: active ? '#fff' : colors.ink, fontWeight: '600' }}>{label}</Text>
       </Pressable>
     );
   };
@@ -136,71 +95,49 @@ function KindToggle({
   );
 }
 
-function OverviewCard() {
+function HeroCard({ mode }: { mode: ModeConfig }) {
   return (
     <LinearGradient
-      colors={[colors.primary, colors.secondary]}
+      colors={mode.heroGradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={styles.overview}
+      style={[styles.overview, { borderRadius: mode.cardRadius }]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Ionicons name="heart" size={18} color="#fff" />
-        <Text
-          style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}
-        >
-          Panoramica salute
-        </Text>
+        <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>{mode.heroLabel}</Text>
       </View>
-      <Text
-        style={{
-          color: '#fff',
-          fontSize: 18,
-          fontWeight: '700',
-          marginTop: 12,
-        }}
-      >
-        Tutto sembra in ordine
+      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 12 }}>
+        {mode.heroTitle}
       </Text>
-      <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 12 }}>
-        Ultimo aggiornamento: oggi, 08:30
+      <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4 }}>
+        {mode.heroSubtitle}
       </Text>
     </LinearGradient>
   );
 }
 
-function FeatureTile({
-  icon,
-  title,
-  subtitle,
-  color,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  subtitle: string;
-  color: string;
-  onPress: () => void;
-}) {
+function FeatureTile({ tile, radius }: { tile: FeatureTileConfig; radius: number }) {
   return (
-    <Pressable onPress={onPress} style={styles.tile}>
+    <Pressable
+      onPress={() => router.push(tile.route as never)}
+      style={[styles.tile, { borderRadius: radius }]}
+    >
       <View
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          backgroundColor: color + '20',
+          width: 38,
+          height: 38,
+          borderRadius: 11,
+          backgroundColor: tile.color + '22',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Ionicons name={icon} size={20} color={color} />
+        <Ionicons name={tile.icon} size={20} color={tile.color} />
       </View>
       <View style={{ marginTop: 12 }}>
-        <Text style={{ fontWeight: '600' }}>{title}</Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-          {subtitle}
-        </Text>
+        <Text style={{ fontWeight: '700', fontSize: 14 }}>{tile.title}</Text>
+        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{tile.subtitle}</Text>
       </View>
     </Pressable>
   );
@@ -211,12 +148,8 @@ function EmergencyCta({ onPress }: { onPress: () => void }) {
     <Pressable onPress={onPress} style={styles.emergency}>
       <Ionicons name="alert-circle" size={22} color={colors.danger} />
       <View style={{ flex: 1, marginLeft: 12 }}>
-        <Text style={{ fontWeight: '700', color: colors.danger }}>
-          È urgente?
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 12 }}>
-          Avvia una valutazione rapida AI
-        </Text>
+        <Text style={{ fontWeight: '700', color: colors.danger }}>È urgente?</Text>
+        <Text style={{ color: colors.muted, fontSize: 12 }}>Avvia una valutazione rapida AI</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={colors.danger} />
     </Pressable>
@@ -227,9 +160,7 @@ function ReminderRow({ title, time }: { title: string; time: string }) {
   return (
     <View style={styles.reminderRow}>
       <Ionicons name="time-outline" size={18} color={colors.muted} />
-      <Text style={{ flex: 1, marginLeft: 10, fontWeight: '500' }}>
-        {title}
-      </Text>
+      <Text style={{ flex: 1, marginLeft: 10, fontWeight: '500' }}>{title}</Text>
       <Text style={{ color: colors.muted }}>{time}</Text>
     </View>
   );
@@ -239,6 +170,12 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 22, fontWeight: '700', color: colors.ink },
   subtitle: { color: colors.muted, marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: colors.ink },
+  emptyText: {
+    color: colors.muted,
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 12,
+  },
   toggle: {
     flexDirection: 'row',
     padding: 4,
@@ -253,20 +190,12 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     alignItems: 'center',
   },
-  overview: {
-    padding: 16,
-    borderRadius: radii.lg,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
+  overview: { padding: 16 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   tile: {
     flexGrow: 1,
     flexBasis: '47%',
     backgroundColor: '#fff',
-    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 14,

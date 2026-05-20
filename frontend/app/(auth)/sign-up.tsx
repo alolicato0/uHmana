@@ -21,7 +21,7 @@ export default function SignUpScreen() {
     setError(null);
     try {
       await signUp(email, password, name);
-      router.replace('/(tabs)/home');
+      router.replace('/');
     } catch (e: any) {
       setError(e?.message ?? 'Errore durante la registrazione');
     } finally {

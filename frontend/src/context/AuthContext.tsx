@@ -3,16 +3,19 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { apiGoogleAuth, apiLogin, apiRegister, type AuthUser } from '../services/auth';
 
 const TOKEN_KEY = 'uhmana_jwt';
+const ONBOARDED_KEY = 'uhmana_onboarded';
 
 interface AuthState {
   user: AuthUser | null;
   token: string | null;
   isLoaded: boolean;
   isSignedIn: boolean;
+  hasOnboarded: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signInWithGoogle: (accessToken: string) => Promise<void>;
   signOut: () => Promise<void>;
+  setOnboarded: () => Promise<void>;
   getToken: () => Promise<string | null>;
 }
 
@@ -22,9 +25,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [hasOnboarded, setHasOnboarded] = useState(false);
 
   useEffect(() => {
-    SecureStore.getItemAsync(TOKEN_KEY).then(async (stored) => {
+    Promise.all([
+      SecureStore.getItemAsync(TOKEN_KEY),
+      SecureStore.getItemAsync(ONBOARDED_KEY),
+    ]).then(async ([stored, onboarded]) => {
       if (stored) {
         try {
           const payload = parseJwtPayload(stored);
@@ -34,8 +41,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await SecureStore.deleteItemAsync(TOKEN_KEY);
         }
       }
+      setHasOnboarded(onboarded === '1');
       setIsLoaded(true);
     });
+  }, []);
+
+  const setOnboarded = useCallback(async () => {
+    await SecureStore.setItemAsync(ONBOARDED_KEY, '1');
+    setHasOnboarded(true);
   }, []);
 
   const persist = useCallback(async (t: string, u: AuthUser) => {
@@ -76,10 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         isLoaded,
         isSignedIn: !!token,
+        hasOnboarded,
         signIn,
         signUp,
         signInWithGoogle,
         signOut,
+        setOnboarded,
         getToken,
       }}
     >

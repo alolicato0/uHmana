@@ -44,34 +44,37 @@ export default function TimelineScreen() {
         <Text style={{ fontSize: 18, fontWeight: '700' }}>Timeline</Text>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8 }}
-      >
-        {types.map((t) => {
-          const active = filter === t;
-          return (
-            <Pressable
-              key={t ?? 'all'}
-              onPress={() => setFilter(t)}
-              style={[
-                styles.chip,
-                active && { backgroundColor: colors.primary, borderColor: colors.primary },
-              ]}
-            >
-              <Text
-                style={{
-                  color: active ? '#fff' : colors.ink,
-                  fontWeight: '500',
-                }}
+      <View style={styles.chipsBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsContent}
+        >
+          {types.map((t) => {
+            const active = filter === t;
+            return (
+              <Pressable
+                key={t ?? 'all'}
+                onPress={() => setFilter(t)}
+                style={[
+                  styles.chip,
+                  active && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
               >
-                {t ? eventTypeLabels[t] : 'Tutti'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: active ? '#fff' : colors.ink },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {t ? eventTypeLabels[t] : 'Tutti'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
         {Object.entries(grouped).map(([label, items]) => (
@@ -135,14 +138,27 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 4,
   },
+  chipsBar: {
+    paddingVertical: 4,
+  },
+  chipsContent: {
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
   chip: {
+    height: 34,
     paddingHorizontal: 14,
-    paddingVertical: 8,
     backgroundColor: '#fff',
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    marginHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   groupTitle: {
     color: colors.muted,

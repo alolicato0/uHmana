@@ -1,18 +1,29 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
+import { HumanIllustration, PetIllustration } from '../src/components/WelcomeIllustrations';
+import { useAuth } from '../src/context/AuthContext';
 import { useProfileStore } from '../src/store/profile';
 import { colors, radii } from '../src/theme';
+import type { ProfileKind } from '../src/types';
 
 export default function WelcomeScreen() {
   const setKind = useProfileStore((s) => s.setActiveKind);
+  const { setOnboarded } = useAuth();
+  const [selected, setSelected] = useState<ProfileKind | null>(null);
+
+  const onContinue = async () => {
+    if (!selected) return;
+    setKind(selected);
+    await setOnboarded();
+    router.replace('/(tabs)/home');
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
       <ScrollView contentContainerStyle={styles.container}>
-
-        {/* Header */}
         <View style={styles.header}>
           <Image
             source={require('../assets/images/icon.png')}
@@ -26,46 +37,49 @@ export default function WelcomeScreen() {
           <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
         </View>
 
-        <View style={{ height: 28 }} />
+        <View style={{ height: 24 }} />
 
-        {/* Card Umano */}
         <Pressable
-          onPress={() => { setKind('human'); router.push('/(auth)/sign-in'); }}
-          style={({ pressed }) => [styles.card, styles.cardHuman, pressed && { opacity: 0.9 }]}
+          onPress={() => setSelected('human')}
+          style={({ pressed }) => [
+            styles.card,
+            styles.cardHuman,
+            selected === 'human' && styles.cardSelected,
+            pressed && { opacity: 0.92 },
+          ]}
         >
           <View style={styles.cardText}>
             <Text style={styles.cardTitle}>Sono qui per me</Text>
-            <Text style={styles.cardSub}>Area Umano</Text>
+            <Text style={styles.cardSub}>Salute, sintomi, terapie</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#4DB6AC' }]}>
-            <Text style={{ fontSize: 38 }}>👩</Text>
-            <Text style={{ fontSize: 38, marginTop: -8 }}>👨</Text>
+            <HumanIllustration />
           </View>
         </Pressable>
 
         <View style={{ height: 16 }} />
 
-        {/* Card Animale */}
         <Pressable
-          onPress={() => { setKind('pet'); router.push('/(auth)/sign-in'); }}
-          style={({ pressed }) => [styles.card, styles.cardPet, pressed && { opacity: 0.9 }]}
+          onPress={() => setSelected('pet')}
+          style={({ pressed }) => [
+            styles.card,
+            styles.cardPet,
+            selected === 'pet' && styles.cardSelectedPet,
+            pressed && { opacity: 0.92 },
+          ]}
         >
           <View style={styles.cardText}>
-            <Text style={styles.cardTitle}>Sono qui per{'\n'}il mio animale</Text>
-            <Text style={styles.cardSub}>Area Animale</Text>
+            <Text style={styles.cardTitle}>Sono qui per il mio animale</Text>
+            <Text style={styles.cardSub}>Vaccini, dieta, comportamento</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#FFCC80' }]}>
-            <Text style={{ fontSize: 38 }}>🐈</Text>
-            <Text style={{ fontSize: 38, marginTop: -8 }}>🐕</Text>
+            <PetIllustration />
           </View>
         </Pressable>
 
         <View style={{ flex: 1, minHeight: 32 }} />
 
-        <PrimaryButton
-          label="Inizia"
-          onPress={() => router.push('/(auth)/sign-in')}
-        />
+        <PrimaryButton label="Inizia" onPress={onContinue} disabled={!selected} />
         <Text style={styles.legal}>
           uHmana è un servizio di supporto informativo.{'\n'}Non sostituisce il parere di un medico o veterinario.
         </Text>
@@ -75,25 +89,10 @@ export default function WelcomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 24,
-    flexGrow: 1,
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: 16,
-    paddingBottom: 4,
-  },
-  logoIcon: {
-    width: 80,
-    height: 80,
-    marginBottom: 12,
-  },
-  wordmark: {
-    fontSize: 44,
-    fontWeight: '800',
-    letterSpacing: -1,
-  },
+  container: { padding: 24, flexGrow: 1 },
+  header: { alignItems: 'center', paddingTop: 16, paddingBottom: 4 },
+  logoIcon: { width: 80, height: 80, marginBottom: 12 },
+  wordmark: { fontSize: 44, fontWeight: '800', letterSpacing: -1 },
   tagline: {
     marginTop: 8,
     fontSize: 11,
@@ -108,32 +107,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radii.lg,
     overflow: 'hidden',
-    minHeight: 110,
+    minHeight: 150,
+    borderWidth: 2,
+    borderColor: 'transparent',
   },
-  cardHuman: {
-    backgroundColor: '#E6F7F5',
-  },
-  cardPet: {
-    backgroundColor: '#FDF3E3',
-  },
-  cardText: {
-    flex: 1,
-    padding: 20,
-  },
-  cardTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: colors.ink,
-    lineHeight: 24,
-  },
-  cardSub: {
-    marginTop: 4,
-    fontSize: 13,
-    color: colors.muted,
-    fontWeight: '500',
-  },
+  cardHuman: { backgroundColor: '#E6F7F5' },
+  cardPet: { backgroundColor: '#FDF3E3' },
+  cardSelected: { borderColor: '#0DB09E' },
+  cardSelectedPet: { borderColor: '#F59E0B' },
+  cardText: { flex: 1, padding: 22 },
+  cardTitle: { fontSize: 19, fontWeight: '700', color: colors.ink, lineHeight: 26 },
+  cardSub: { marginTop: 6, fontSize: 13, color: colors.muted, fontWeight: '500' },
   cardImage: {
-    width: 100,
+    width: 130,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',

@@ -1,12 +1,12 @@
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, View } from 'react-native';
-import { useAuth } from '../src/context/AuthContext';
 import { Logo } from '../src/components/Logo';
+import { useAuth } from '../src/context/AuthContext';
 import { colors } from '../src/theme';
 
 export default function Index() {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, hasOnboarded } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -25,5 +25,7 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={isSignedIn ? '/(tabs)/home' : '/welcome'} />;
+  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
+  if (!hasOnboarded) return <Redirect href="/welcome" />;
+  return <Redirect href="/(tabs)/home" />;
 }
