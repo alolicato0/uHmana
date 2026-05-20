@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfileStore } from '../../src/store/profile';
+import { useRemindersStore } from '../../src/store/reminders';
 import { colors, radii } from '../../src/theme';
 import type { ProfileKind } from '../../src/types';
 
@@ -20,6 +21,9 @@ export default function HomeScreen() {
   const setKind = useProfileStore((s) => s.setActiveKind);
   const getProfile = useProfileStore((s) => s.getActiveProfile);
   const profile = getProfile();
+
+  const reminders = useRemindersStore((s) => s.reminders);
+  const upcomingReminders = reminders.filter((r) => r.enabled).slice(0, 3);
 
   const firstName =
     user?.firstName ?? profile?.name.split(' ')[0] ?? '';
@@ -83,8 +87,15 @@ export default function HomeScreen() {
         <View style={{ height: 24 }} />
         <Text style={styles.sectionTitle}>Prossimi promemoria</Text>
         <View style={{ height: 8 }} />
-        <ReminderRow title="Ibuprofene" time="Oggi, 14:00" />
-        <ReminderRow title="Visita di controllo" time="12 Maggio, 10:30" />
+        {upcomingReminders.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 13, textAlign: 'center', paddingVertical: 12 }}>
+            Nessun promemoria attivo
+          </Text>
+        ) : (
+          upcomingReminders.map((r) => (
+            <ReminderRow key={r.id} title={r.title} time={r.schedule.time ?? r.schedule.kind} />
+          ))
+        )}
       </ScrollView>
     </SafeAreaView>
   );

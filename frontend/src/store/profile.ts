@@ -1,52 +1,66 @@
 import { create } from 'zustand';
 import type { HealthProfile, ProfileKind } from '../types';
+import {
+  createProfile,
+  deleteProfile,
+  fetchProfiles,
+  updateProfile,
+} from '../services/profiles';
+
+type GetToken = () => Promise<string | null>;
 
 interface ProfileState {
   profiles: HealthProfile[];
+  loading: boolean;
   activeKind: ProfileKind;
   setActiveKind: (k: ProfileKind) => void;
-  upsert: (p: HealthProfile) => void;
-  remove: (id: string) => void;
+  load: (getToken: GetToken) => Promise<void>;
+  upsert: (p: HealthProfile, getToken: GetToken) => Promise<void>;
+  remove: (id: string, getToken: GetToken) => Promise<void>;
   getActiveProfile: () => HealthProfile | undefined;
 }
 
-const seed: HealthProfile[] = [
-  {
-    id: 'human-1',
-    name: 'Martina Rossi',
-    kind: 'human',
-    bloodGroup: 'A+',
-    allergies: ['Penicillina'],
-    conditions: ['Asma lieve'],
-    currentTherapies: ['Ibuprofene 400mg al bisogno'],
-  },
-  {
-    id: 'pet-1',
-    name: 'Luna',
-    kind: 'pet',
-    species: 'Cane',
-    breed: 'Golden Retriever',
-    weightKg: 28.5,
-    allergies: [],
-    conditions: [],
-    currentTherapies: [],
-  },
-];
+const isMongoId = (id: string) => /^[a-f\d]{24}$/i.test(id);
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
-  profiles: seed,
+  profiles: [],
+  loading: false,
   activeKind: 'human',
+
   setActiveKind: (k) => set({ activeKind: k }),
-  upsert: (p) =>
-    set((s) => {
-      const i = s.profiles.findIndex((x) => x.id === p.id);
-      const next = [...s.profiles];
-      if (i === -1) next.push(p);
-      else next[i] = p;
-      return { profiles: next };
-    }),
-  remove: (id) =>
-    set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) })),
+
+  load: async (getToken) => {
+    set({ loading: true });
+    try {
+      const token = await getToken();
+      const profiles = await fetchProfiles(token);
+      set({ profiles, loading: false });
+    } catch {
+      set({ loading: false });
+    }
+  },
+
+  upsert: async (p, getToken) => {
+    const token = await getToken();
+    if (isMongoId(p.id)) {
+      const { id, ...rest } = p;
+      const updated = await updateProfile(id, rest, token);
+      set((s) => ({
+        profiles: s.profiles.map((x) => (x.id === id ? updated : x)),
+      }));
+    } else {
+      const { id: _ignored, ...rest } = p;
+      const created = await createProfile(rest, token);
+      set((s) => ({ profiles: [...s.profiles, created] }));
+    }
+  },
+
+  remove: async (id, getToken) => {
+    const token = await getToken();
+    await deleteProfile(id, token);
+    set((s) => ({ profiles: s.profiles.filter((p) => p.id !== id) }));
+  },
+
   getActiveProfile: () => {
     const s = get();
     return s.profiles.find((p) => p.kind === s.activeKind) ?? s.profiles[0];
