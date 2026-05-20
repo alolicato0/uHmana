@@ -1,4 +1,4 @@
-import { useUser } from '@clerk/clerk-expo';
+import { useAuth } from '../../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -16,7 +16,7 @@ import { colors, radii } from '../../src/theme';
 import type { ProfileKind } from '../../src/types';
 
 export default function HomeScreen() {
-  const { user } = useUser();
+  const { user } = useAuth();
   const activeKind = useProfileStore((s) => s.activeKind);
   const setKind = useProfileStore((s) => s.setActiveKind);
   const getProfile = useProfileStore((s) => s.getActiveProfile);
@@ -25,8 +25,7 @@ export default function HomeScreen() {
   const reminders = useRemindersStore((s) => s.reminders);
   const upcomingReminders = reminders.filter((r) => r.enabled).slice(0, 3);
 
-  const firstName =
-    user?.firstName ?? profile?.name.split(' ')[0] ?? '';
+  const firstName = user?.name?.split(' ')[0] ?? profile?.name?.split(' ')[0] ?? '';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>

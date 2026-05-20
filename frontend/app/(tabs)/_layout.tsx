@@ -1,8 +1,8 @@
-import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs, router } from 'expo-router';
 import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
+import { useAuth } from '../../src/context/AuthContext';
 import { useProfileStore } from '../../src/store/profile';
 import { useRemindersStore } from '../../src/store/reminders';
 import { useTimelineStore } from '../../src/store/timeline';
@@ -23,7 +23,7 @@ export default function TabsLayout() {
     }
   }, [isSignedIn]);
 
-  if (isLoaded && !isSignedIn) return <Redirect href="/welcome" />;
+  if (isLoaded && !isSignedIn) return <Redirect href="/(auth)/sign-in" />;
 
   return (
     <Tabs
