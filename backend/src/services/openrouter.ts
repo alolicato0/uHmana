@@ -29,20 +29,77 @@ export interface ChatOptions {
   extraContext?: string;
 }
 
+// Cached list of available free models, refreshed every hour
+let freeTextModels: string[] = [];
+let freeVisionModels: string[] = [];
+let modelsLoadedAt = 0;
+const CACHE_TTL = 60 * 60 * 1000;
+
+async function loadFreeModels(): Promise<void> {
+  try {
+    const res = await fetch(`${config.openrouter.baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${config.openrouter.apiKey}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const models: any[] = data?.data ?? [];
+
+    const textModels: string[] = [];
+    const visionModels: string[] = [];
+
+    for (const m of models) {
+      const id: string = m?.id ?? '';
+      if (!id.endsWith(':free')) continue;
+      const supportsVision =
+        Array.isArray(m?.architecture?.modalities?.input) &&
+        m.architecture.modalities.input.includes('image');
+      if (supportsVision) visionModels.push(id);
+      textModels.push(id);
+    }
+
+    if (textModels.length > 0) {
+      freeTextModels = textModels;
+      freeVisionModels = visionModels.length > 0 ? visionModels : textModels;
+      modelsLoadedAt = Date.now();
+    }
+  } catch {
+    // keep previous list
+  }
+}
+
+async function getFreeModels(): Promise<{ text: string[]; vision: string[] }> {
+  if (Date.now() - modelsLoadedAt > CACHE_TTL || freeTextModels.length === 0) {
+    await loadFreeModels();
+  }
+  return { text: freeTextModels, vision: freeVisionModels };
+}
+
 export async function chat(opts: ChatOptions): Promise<string> {
   const hasImages = opts.messages.some(
     (m) => m.attachments && m.attachments.length > 0,
   );
-  const primary = hasImages ? config.openrouter.modelVision : config.openrouter.modelPrimary;
-  try {
-    return await callModel(primary, opts);
-  } catch (e: any) {
-    const status = e?.status ?? 0;
-    if (status === 404 || status === 429 || status >= 500) {
-      return await callModel(config.openrouter.modelFallback, opts);
+
+  // Build candidate list: configured model first, then discovered free models
+  const { text, vision } = await getFreeModels();
+  const preferred = hasImages ? config.openrouter.modelVision : config.openrouter.modelPrimary;
+  const pool = hasImages ? vision : text;
+  const candidates = [preferred, config.openrouter.modelFallback, ...pool].filter(
+    (v, i, a) => v && a.indexOf(v) === i,
+  );
+
+  let lastError: any;
+  for (const model of candidates) {
+    try {
+      return await callModel(model, opts);
+    } catch (e: any) {
+      lastError = e;
+      const status = e?.status ?? 0;
+      // continue to next model on 404 (deprecated) or 429 (rate limit) or 5xx
+      if (status === 404 || status === 429 || status >= 500) continue;
+      throw e;
     }
-    throw e;
   }
+  throw lastError;
 }
 
 async function callModel(model: string, opts: ChatOptions): Promise<string> {
