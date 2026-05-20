@@ -68,7 +68,7 @@ const human: ModeConfig = {
       title: 'Sintomi',
       subtitle: 'Tracking benessere',
       color: '#F59E0B',
-      route: '/(tabs)/timeline',
+      route: '/sintomi',
     },
     {
       icon: 'document-text-outline',
