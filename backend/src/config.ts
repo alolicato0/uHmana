@@ -32,11 +32,11 @@ export const config = {
     ),
     modelFallback: optional(
       'OPENROUTER_MODEL_FALLBACK',
-      'deepseek/deepseek-r1:free',
+      'qwen/qwen-2.5-72b-instruct:free',
     ),
     modelVision: optional(
       'OPENROUTER_MODEL_VISION',
-      'mistralai/mistral-small-3.1-24b-instruct:free',
+      'meta-llama/llama-3.2-11b-vision-instruct:free',
     ),
     referer: optional('APP_REFERER', 'https://uhmana.app'),
     title: optional('APP_TITLE', 'uHmana'),

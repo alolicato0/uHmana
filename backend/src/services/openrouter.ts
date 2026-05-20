@@ -38,7 +38,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
     return await callModel(primary, opts);
   } catch (e: any) {
     const status = e?.status ?? 0;
-    if (status === 429 || status >= 500) {
+    if (status === 404 || status === 429 || status >= 500) {
       return await callModel(config.openrouter.modelFallback, opts);
     }
     throw e;
