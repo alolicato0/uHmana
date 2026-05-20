@@ -1,3 +1,4 @@
+import * as Updates from 'expo-updates';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -5,10 +6,25 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider } from '../src/context/AuthContext';
 import { setupNotifications } from '../src/services/notifications';
 
+async function applyOtaIfAvailable() {
+  if (__DEV__) return;
+  try {
+    const check = await Updates.checkForUpdateAsync();
+    if (check.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    }
+  } catch {
+    // fail silently — app continua con il bundle corrente
+  }
+}
+
 export default function RootLayout() {
   useEffect(() => {
     void setupNotifications();
+    void applyOtaIfAvailable();
   }, []);
+
 
   return (
     <AuthProvider>
