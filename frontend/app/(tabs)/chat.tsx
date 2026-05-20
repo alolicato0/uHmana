@@ -38,7 +38,8 @@ export default function ChatScreen() {
       }
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        quality: 0.8,
+        quality: 0.7,
+        base64: true,
       });
       if (res.canceled) return;
       const a = res.assets?.[0];
@@ -46,9 +47,14 @@ export default function ChatScreen() {
         Alert.alert('Errore', 'Nessuna immagine selezionata.');
         return;
       }
+      const mime = a.mimeType ?? 'image/jpeg';
       setPending((p) => [
         ...p,
-        { url: a.uri, mimeType: a.mimeType ?? 'image/jpeg' },
+        {
+          url: a.uri,
+          mimeType: mime,
+          dataUrl: a.base64 ? `data:${mime};base64,${a.base64}` : undefined,
+        },
       ]);
     } catch (e: any) {
       Alert.alert('Errore galleria', e?.message ?? String(e));
@@ -62,16 +68,24 @@ export default function ChatScreen() {
         Alert.alert('Permesso negato', 'Concedi accesso alla fotocamera nelle impostazioni del telefono.');
         return;
       }
-      const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      const res = await ImagePicker.launchCameraAsync({
+        quality: 0.7,
+        base64: true,
+      });
       if (res.canceled) return;
       const a = res.assets?.[0];
       if (!a?.uri) {
         Alert.alert('Errore', 'Foto non disponibile.');
         return;
       }
+      const mime = a.mimeType ?? 'image/jpeg';
       setPending((p) => [
         ...p,
-        { url: a.uri, mimeType: a.mimeType ?? 'image/jpeg' },
+        {
+          url: a.uri,
+          mimeType: mime,
+          dataUrl: a.base64 ? `data:${mime};base64,${a.base64}` : undefined,
+        },
       ]);
     } catch (e: any) {
       Alert.alert('Errore fotocamera', e?.message ?? String(e));

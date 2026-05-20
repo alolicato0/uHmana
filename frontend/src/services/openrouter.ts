@@ -22,7 +22,7 @@ export async function chat({ history, extraContext, token }: ChatRequest): Promi
         ? await Promise.all(
             m.attachments.map(async (a) => ({
               mimeType: a.mimeType,
-              dataUrl: await toDataUrl(a.url, a.mimeType),
+              dataUrl: a.dataUrl ?? await toDataUrl(a.url, a.mimeType),
             })),
           )
         : [],
