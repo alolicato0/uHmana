@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -29,27 +30,51 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   const pickImage = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-    if (!res.canceled && res.assets[0]) {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permesso negato', 'Concedi accesso alle foto nelle impostazioni del telefono.');
+        return;
+      }
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
+      if (res.canceled) return;
+      const a = res.assets?.[0];
+      if (!a?.uri) {
+        Alert.alert('Errore', 'Nessuna immagine selezionata.');
+        return;
+      }
       setPending((p) => [
         ...p,
-        { url: res.assets[0].uri, mimeType: res.assets[0].mimeType ?? 'image/jpeg' },
+        { url: a.uri, mimeType: a.mimeType ?? 'image/jpeg' },
       ]);
+    } catch (e: any) {
+      Alert.alert('Errore galleria', e?.message ?? String(e));
     }
   };
 
   const takePhoto = async () => {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
-    if (!res.canceled && res.assets[0]) {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permesso negato', 'Concedi accesso alla fotocamera nelle impostazioni del telefono.');
+        return;
+      }
+      const res = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+      if (res.canceled) return;
+      const a = res.assets?.[0];
+      if (!a?.uri) {
+        Alert.alert('Errore', 'Foto non disponibile.');
+        return;
+      }
       setPending((p) => [
         ...p,
-        { url: res.assets[0].uri, mimeType: res.assets[0].mimeType ?? 'image/jpeg' },
+        { url: a.uri, mimeType: a.mimeType ?? 'image/jpeg' },
       ]);
+    } catch (e: any) {
+      Alert.alert('Errore fotocamera', e?.message ?? String(e));
     }
   };
 
