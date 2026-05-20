@@ -38,7 +38,7 @@ export default function SignInScreen() {
     setError(null);
     try {
       await signIn(email, password);
-      router.replace('/(tabs)/home');
+      router.replace('/');
     } catch (e: any) {
       setError(e?.message ?? 'Credenziali non valide');
     } finally {
@@ -63,7 +63,7 @@ export default function SignInScreen() {
       }
 
       await signInWithGoogle(tokens.accessToken);
-      router.replace('/(tabs)/home');
+      router.replace('/');
     } catch (e: any) {
       if (isErrorWithCode(e)) {
         if (e.code === statusCodes.SIGN_IN_CANCELLED) {
