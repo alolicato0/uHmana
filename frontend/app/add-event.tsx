@@ -1,6 +1,9 @@
+import { useAuth } from '@clerk/clerk-expo';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
+import { useProfileStore } from '../src/store/profile';
 import { useTimelineStore } from '../src/store/timeline';
 import { colors, radii } from '../src/theme';
 import {
@@ -29,20 +33,33 @@ const TYPES: TimelineEventType[] = [
 ];
 
 export default function AddEventScreen() {
+  const { getToken } = useAuth();
   const add = useTimelineStore((s) => s.add);
+  const getActiveProfile = useProfileStore((s) => s.getActiveProfile);
   const [picked, setPicked] = useState<TimelineEventType | null>(null);
   const [title, setTitle] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const confirm = () => {
+  const confirm = async () => {
     if (!picked || !title.trim()) return;
-    add({
-      id: `t-${Date.now()}`,
-      profileId: 'self',
-      type: picked,
-      title: title.trim(),
-      date: new Date().toISOString(),
-    });
-    router.back();
+    setSaving(true);
+    try {
+      const profile = getActiveProfile();
+      await add(
+        {
+          profileId: profile?.id ?? '',
+          type: picked,
+          title: title.trim(),
+          date: new Date().toISOString(),
+        },
+        getToken,
+      );
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Errore', e?.message ?? 'Impossibile salvare evento.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -78,7 +95,11 @@ export default function AddEventScreen() {
               style={styles.input}
             />
             <View style={{ height: 12 }} />
-            <PrimaryButton label="Aggiungi" onPress={confirm} />
+            <PrimaryButton
+              label={saving ? '' : 'Aggiungi'}
+              onPress={confirm}
+              loading={saving}
+            />
             <View style={{ height: 8 }} />
             <PrimaryButton
               label="Annulla"

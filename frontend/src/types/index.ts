@@ -76,3 +76,23 @@ export const profileKindLabel: Record<ProfileKind, string> = {
   human: 'Umano',
   pet: 'Animale',
 };
+
+export type ReminderCategory = 'medication' | 'visit' | 'vaccine' | 'other';
+export type ReminderKind = 'once' | 'daily' | 'weekly' | 'monthly';
+
+export interface ReminderSchedule {
+  kind: ReminderKind;
+  time?: string;
+  date?: string;
+  daysOfWeek?: number[];
+}
+
+export interface Reminder {
+  id: string;
+  profileId?: string;
+  category: ReminderCategory;
+  title: string;
+  notes?: string;
+  schedule: ReminderSchedule;
+  enabled: boolean;
+}

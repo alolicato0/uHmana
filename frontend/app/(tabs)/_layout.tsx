@@ -1,11 +1,28 @@
 import { useAuth } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Redirect, Tabs, router } from 'expo-router';
+import { useEffect } from 'react';
 import { Pressable, View } from 'react-native';
+import { useProfileStore } from '../../src/store/profile';
+import { useRemindersStore } from '../../src/store/reminders';
+import { useTimelineStore } from '../../src/store/timeline';
 import { colors } from '../../src/theme';
 
 export default function TabsLayout() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded, getToken } = useAuth();
+
+  const loadProfiles = useProfileStore((s) => s.load);
+  const loadTimeline = useTimelineStore((s) => s.load);
+  const loadReminders = useRemindersStore((s) => s.load);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      loadProfiles(getToken);
+      loadTimeline(getToken);
+      loadReminders(getToken);
+    }
+  }, [isSignedIn]);
+
   if (isLoaded && !isSignedIn) return <Redirect href="/welcome" />;
 
   return (
