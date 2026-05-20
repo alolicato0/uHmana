@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import * as AuthSession from 'expo-auth-session';
+import * as Google from 'expo-auth-session/providers/google';
 import { Link, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../../src/components/PrimaryButton';
@@ -11,12 +11,9 @@ import { colors, radii } from '../../src/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ?? '';
-
-const discovery = {
-  authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-  tokenEndpoint: 'https://oauth2.googleapis.com/token',
-};
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
 
 export default function SignInScreen() {
   const { signIn, signInWithGoogle } = useAuth();
@@ -26,16 +23,31 @@ export default function SignInScreen() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'uhmana', path: 'auth/callback' });
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    scopes: ['openid', 'profile', 'email'],
+  });
 
-  const [request, , promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId: GOOGLE_CLIENT_ID,
-      scopes: ['openid', 'profile', 'email'],
-      redirectUri,
-    },
-    discovery,
-  );
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const accessToken = response.authentication?.accessToken;
+      if (!accessToken) return;
+      (async () => {
+        try {
+          await signInWithGoogle(accessToken);
+          router.replace('/(tabs)/home');
+        } catch (e: any) {
+          setError(e?.message ?? 'Errore login Google');
+        } finally {
+          setGoogleLoading(false);
+        }
+      })();
+    } else if (response?.type === 'error' || response?.type === 'dismiss') {
+      setGoogleLoading(false);
+    }
+  }, [response, signInWithGoogle]);
 
   const onSubmit = async () => {
     if (!email || !password) return;
@@ -52,33 +64,13 @@ export default function SignInScreen() {
   };
 
   const onGooglePress = async () => {
-    if (!GOOGLE_CLIENT_ID) {
-      setError('Google login non configurato (EXPO_PUBLIC_GOOGLE_CLIENT_ID mancante)');
+    if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID) {
+      setError('Google login non configurato');
       return;
     }
     setGoogleLoading(true);
     setError(null);
-    try {
-      const result = await promptAsync();
-      if (result?.type !== 'success') return;
-
-      const tokenRes = await AuthSession.exchangeCodeAsync(
-        {
-          clientId: GOOGLE_CLIENT_ID,
-          redirectUri,
-          code: result.params.code,
-          extraParams: { code_verifier: request?.codeVerifier ?? '' },
-        },
-        discovery,
-      );
-
-      await signInWithGoogle(tokenRes.accessToken);
-      router.replace('/(tabs)/home');
-    } catch (e: any) {
-      setError(e?.message ?? 'Errore login Google');
-    } finally {
-      setGoogleLoading(false);
-    }
+    await promptAsync();
   };
 
   return (
