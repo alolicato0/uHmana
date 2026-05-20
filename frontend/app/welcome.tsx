@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
+import { HumanIllustration, PetIllustration } from '../src/components/WelcomeIllustrations';
 import { useAuth } from '../src/context/AuthContext';
 import { useProfileStore } from '../src/store/profile';
 import { colors, radii } from '../src/theme';
@@ -52,10 +53,7 @@ export default function WelcomeScreen() {
             <Text style={styles.cardSub}>Salute, sintomi, terapie</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#4DB6AC' }]}>
-            <View style={styles.emojiRow}>
-              <Text style={styles.emojiLg}>👩</Text>
-              <Text style={styles.emojiLg}>👨</Text>
-            </View>
+            <HumanIllustration />
           </View>
         </Pressable>
 
@@ -75,10 +73,7 @@ export default function WelcomeScreen() {
             <Text style={styles.cardSub}>Vaccini, dieta, comportamento</Text>
           </View>
           <View style={[styles.cardImage, { backgroundColor: '#FFCC80' }]}>
-            <View style={styles.emojiRow}>
-              <Text style={styles.emojiLg}>🐈</Text>
-              <Text style={styles.emojiLg}>🐕</Text>
-            </View>
+            <PetIllustration />
           </View>
         </Pressable>
 
@@ -129,8 +124,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emojiRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  emojiLg: { fontSize: 52, marginHorizontal: -6 },
   legal: {
     marginTop: 16,
     fontSize: 11,
