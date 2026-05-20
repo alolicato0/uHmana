@@ -1,7 +1,8 @@
-import { useSignIn } from '@clerk/clerk-expo';
+import { useSignIn, useSSO } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, router } from 'expo-router';
-import { useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -15,12 +16,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../../src/components/PrimaryButton';
 import { colors, radii } from '../../src/theme';
 
+WebBrowser.maybeCompleteAuthSession();
+
 export default function SignInScreen() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { startSSOFlow } = useSSO();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void WebBrowser.warmUpAsync();
+    return () => {
+      void WebBrowser.coolDownAsync();
+    };
+  }, []);
 
   const onSubmit = async () => {
     if (!isLoaded) return;
@@ -40,6 +52,25 @@ export default function SignInScreen() {
       setLoading(false);
     }
   };
+
+  const handleSSO = useCallback(
+    async (strategy: 'oauth_google' | 'oauth_apple', kind: 'google' | 'apple') => {
+      setError(null);
+      setOauthLoading(kind);
+      try {
+        const { createdSessionId, setActive: ssoSetActive } = await startSSOFlow({ strategy });
+        if (createdSessionId && ssoSetActive) {
+          await ssoSetActive({ session: createdSessionId });
+          router.replace('/(tabs)/home');
+        }
+      } catch (e: any) {
+        setError(e?.errors?.[0]?.message ?? e?.message ?? `Errore login ${kind}`);
+      } finally {
+        setOauthLoading(null);
+      }
+    },
+    [startSSOFlow],
+  );
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -66,14 +97,16 @@ export default function SignInScreen() {
 
         <SocialButton
           icon={<Ionicons name="logo-google" size={20} color={colors.ink} />}
-          label="Continua con Google"
-          onPress={() => {/* TODO: signIn.authenticateWithRedirect oauth_google */}}
+          label={oauthLoading === 'google' ? 'Apertura...' : 'Continua con Google'}
+          onPress={() => handleSSO('oauth_google', 'google')}
+          disabled={!!oauthLoading}
         />
         <View style={{ height: 12 }} />
         <SocialButton
           icon={<Ionicons name="logo-apple" size={22} color={colors.ink} />}
-          label="Continua con Apple"
-          onPress={() => {/* TODO: oauth_apple */}}
+          label={oauthLoading === 'apple' ? 'Apertura...' : 'Continua con Apple'}
+          onPress={() => handleSSO('oauth_apple', 'apple')}
+          disabled={!!oauthLoading}
         />
 
         <View style={styles.divider}>
@@ -136,17 +169,21 @@ function SocialButton({
   icon,
   label,
   onPress,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={({ pressed }) => [
         styles.social,
         pressed && { opacity: 0.85 },
+        disabled && { opacity: 0.5 },
       ]}
     >
       {icon}
