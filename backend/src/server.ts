@@ -1,5 +1,6 @@
 import cors from 'cors';
 import express from 'express';
+import mongoose from 'mongoose';
 import { config } from './config.js';
 import { connectDb } from './db.js';
 import { errorHandler } from './middleware/auth.js';
@@ -24,6 +25,24 @@ async function main() {
 
   app.get('/health', (_req, res) => {
     res.json({ ok: true, ts: new Date().toISOString() });
+  });
+
+  app.get('/api/diagnostics', (_req, res) => {
+    const dbStates = ['disconnected', 'connected', 'connecting', 'disconnecting'];
+    const dbState = dbStates[mongoose.connection.readyState] ?? 'unknown';
+    res.json({
+      ok: true,
+      ts: new Date().toISOString(),
+      uptime_s: Math.floor(process.uptime()),
+      node: process.version,
+      db: dbState,
+      env: {
+        JWT_SECRET: !!process.env.JWT_SECRET,
+        MONGO_URI: !!process.env.MONGO_URI,
+        OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+        GOOGLE_CLIENT_ID: !!process.env.GOOGLE_CLIENT_ID,
+      },
+    });
   });
 
   app.use('/api/auth', authRouter);
