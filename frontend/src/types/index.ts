@@ -37,8 +37,11 @@ export interface TimelineEvent {
 export type ChatRole = 'user' | 'assistant' | 'system';
 
 export interface ChatAttachment {
+  /** file:// URI usato per mostrare il thumbnail */
   url: string;
   mimeType: string;
+  /** data:mime;base64,... già pronto per il backend (opzionale, calcolato al pick) */
+  dataUrl?: string;
 }
 
 export interface ChatMessage {
