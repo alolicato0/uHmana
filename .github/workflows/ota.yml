@@ -35,4 +35,5 @@ jobs:
         run: npx eas-cli update --branch preview --message "${{ github.event.inputs.message || github.event.head_commit.message }}" --non-interactive
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: https://uhmana-api.onrender.com
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: ${{ secrets.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID }}
