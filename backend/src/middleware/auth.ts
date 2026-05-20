@@ -1,23 +1,46 @@
-import { clerkMiddleware, getAuth, requireAuth } from '@clerk/express';
 import type { NextFunction, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 
-// Inietta `req.auth` con session + userId su tutte le richieste
-export const clerk = clerkMiddleware({
-  secretKey: config.clerk.secretKey,
-  publishableKey: config.clerk.publishableKey,
-});
+interface JwtPayload {
+  sub: string;
+  email: string;
+  name: string;
+}
 
-// Blocca con 401 se non c'è un utente autenticato
-export const requireUser = requireAuth();
-
-/** Helper per ottenere lo userId in modo type-safe */
-export function userId(req: Request): string {
-  const auth = getAuth(req);
-  if (!auth?.userId) {
-    throw Object.assign(new Error('Unauthorized'), { status: 401 });
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: JwtPayload;
+    }
   }
-  return auth.userId;
+}
+
+export function requireUser(req: Request, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  const token = header.slice(7);
+  try {
+    req.user = jwt.verify(token, config.jwt.secret) as JwtPayload;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Token non valido o scaduto' });
+  }
+}
+
+export function userId(req: Request): string {
+  if (!req.user?.sub) throw Object.assign(new Error('Unauthorized'), { status: 401 });
+  return req.user.sub;
+}
+
+export function signToken(payload: JwtPayload): string {
+  return jwt.sign(payload, config.jwt.secret, {
+    expiresIn: config.jwt.expiresIn,
+  } as jwt.SignOptions);
 }
 
 export function errorHandler(
@@ -30,7 +53,5 @@ export function errorHandler(
   const status = err?.status ?? err?.statusCode ?? 500;
   // eslint-disable-next-line no-console
   if (status >= 500) console.error('[error]', err);
-  res.status(status).json({
-    error: err?.message ?? 'Internal Server Error',
-  });
+  res.status(status).json({ error: err?.message ?? 'Internal Server Error' });
 }

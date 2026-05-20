@@ -1,4 +1,4 @@
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useAuth } from '../../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -8,8 +8,7 @@ import { useProfileStore } from '../../src/store/profile';
 import { colors, radii } from '../../src/theme';
 
 export default function ProfileScreen() {
-  const { user } = useUser();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const profile = useProfileStore((s) => s.getActiveProfile());
 
   return (
@@ -25,10 +24,10 @@ export default function ProfileScreen() {
             <Ionicons name="person" size={42} color={colors.primary} />
           </View>
           <Text style={styles.name}>
-            {user?.fullName ?? profile?.name ?? 'Utente'}
+            {user?.name ?? profile?.name ?? 'Utente'}
           </Text>
           <Text style={styles.email}>
-            {user?.primaryEmailAddress?.emailAddress ?? ''}
+            {user?.email ?? ''}
           </Text>
           <View style={styles.premiumBadge}>
             <Ionicons name="star" size={12} color="#FBBF24" />

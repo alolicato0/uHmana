@@ -1,76 +1,77 @@
-import { useSignIn, useSSO } from '@clerk/clerk-expo';
 import { Ionicons } from '@expo/vector-icons';
+import * as Google from 'expo-auth-session/providers/google';
 import { Link, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { useCallback, useEffect, useState } from 'react';
-import {
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../../src/components/PrimaryButton';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors, radii } from '../../src/theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '';
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+
 export default function SignInScreen() {
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { startSSOFlow } = useSSO();
+  const { signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    scopes: ['openid', 'profile', 'email'],
+  });
+
   useEffect(() => {
-    void WebBrowser.warmUpAsync();
-    return () => {
-      void WebBrowser.coolDownAsync();
-    };
-  }, []);
+    if (response?.type === 'success') {
+      const accessToken = response.authentication?.accessToken;
+      if (!accessToken) return;
+      (async () => {
+        try {
+          await signInWithGoogle(accessToken);
+          router.replace('/(tabs)/home');
+        } catch (e: any) {
+          setError(e?.message ?? 'Errore login Google');
+        } finally {
+          setGoogleLoading(false);
+        }
+      })();
+    } else if (response?.type === 'error' || response?.type === 'dismiss') {
+      setGoogleLoading(false);
+    }
+  }, [response, signInWithGoogle]);
 
   const onSubmit = async () => {
-    if (!isLoaded) return;
+    if (!email || !password) return;
     setLoading(true);
     setError(null);
     try {
-      const attempt = await signIn.create({ identifier: email, password });
-      if (attempt.status === 'complete') {
-        await setActive({ session: attempt.createdSessionId });
-        router.replace('/(tabs)/home');
-      } else {
-        setError("Verifica richiesta. Controlla l'email.");
-      }
+      await signIn(email, password);
+      router.replace('/(tabs)/home');
     } catch (e: any) {
-      setError(e?.errors?.[0]?.message ?? 'Credenziali non valide.');
+      setError(e?.message ?? 'Credenziali non valide');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSSO = useCallback(
-    async (strategy: 'oauth_google' | 'oauth_apple', kind: 'google' | 'apple') => {
-      setError(null);
-      setOauthLoading(kind);
-      try {
-        const { createdSessionId, setActive: ssoSetActive } = await startSSOFlow({ strategy });
-        if (createdSessionId && ssoSetActive) {
-          await ssoSetActive({ session: createdSessionId });
-          router.replace('/(tabs)/home');
-        }
-      } catch (e: any) {
-        setError(e?.errors?.[0]?.message ?? e?.message ?? `Errore login ${kind}`);
-      } finally {
-        setOauthLoading(null);
-      }
-    },
-    [startSSOFlow],
-  );
+  const onGooglePress = async () => {
+    if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID) {
+      setError('Google login non configurato');
+      return;
+    }
+    setGoogleLoading(true);
+    setError(null);
+    await promptAsync();
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -79,7 +80,6 @@ export default function SignInScreen() {
           <Ionicons name="chevron-back" size={28} color={colors.ink} />
         </Pressable>
 
-        {/* Logo */}
         <View style={styles.logoArea}>
           <Image
             source={require('../../assets/images/icon.png')}
@@ -95,19 +95,20 @@ export default function SignInScreen() {
 
         <View style={{ height: 20 }} />
 
-        <SocialButton
-          icon={<Ionicons name="logo-google" size={20} color={colors.ink} />}
-          label={oauthLoading === 'google' ? 'Apertura...' : 'Continua con Google'}
-          onPress={() => handleSSO('oauth_google', 'google')}
-          disabled={!!oauthLoading}
-        />
-        <View style={{ height: 12 }} />
-        <SocialButton
-          icon={<Ionicons name="logo-apple" size={22} color={colors.ink} />}
-          label={oauthLoading === 'apple' ? 'Apertura...' : 'Continua con Apple'}
-          onPress={() => handleSSO('oauth_apple', 'apple')}
-          disabled={!!oauthLoading}
-        />
+        <Pressable
+          onPress={onGooglePress}
+          disabled={googleLoading || !request}
+          style={({ pressed }) => [
+            styles.social,
+            pressed && { opacity: 0.85 },
+            (googleLoading || !request) && { opacity: 0.5 },
+          ]}
+        >
+          <Ionicons name="logo-google" size={20} color={colors.ink} />
+          <Text style={{ marginLeft: 10, fontWeight: '600', color: colors.ink }}>
+            {googleLoading ? 'Apertura...' : 'Continua con Google'}
+          </Text>
+        </Pressable>
 
         <View style={styles.divider}>
           <View style={styles.line} />
@@ -134,27 +135,14 @@ export default function SignInScreen() {
           style={styles.input}
         />
 
-        <Pressable
-          onPress={() => {}}
-          style={{ alignSelf: 'flex-end', marginTop: 8 }}
-        >
-          <Text style={{ color: colors.primary, fontWeight: '500' }}>
-            Password dimenticata?
-          </Text>
-        </Pressable>
-
         {error && (
-          <Text style={{ color: colors.danger, marginTop: 12, fontSize: 13 }}>
-            {error}
-          </Text>
+          <Text style={{ color: colors.danger, marginTop: 12, fontSize: 13 }}>{error}</Text>
         )}
 
         <View style={{ height: 16 }} />
         <PrimaryButton label="Accedi" onPress={onSubmit} loading={loading} />
 
-        <View
-          style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}
-        >
+        <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
           <Text style={{ color: colors.muted }}>Non hai un account? </Text>
           <Link href="/(auth)/sign-up" style={{ color: colors.primary, fontWeight: '600' }}>
             Registrati
@@ -165,47 +153,12 @@ export default function SignInScreen() {
   );
 }
 
-function SocialButton({
-  icon,
-  label,
-  onPress,
-  disabled,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.social,
-        pressed && { opacity: 0.85 },
-        disabled && { opacity: 0.5 },
-      ]}
-    >
-      {icon}
-      <Text style={{ marginLeft: 10, fontWeight: '600', color: colors.ink }}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   logoArea: { alignItems: 'center', marginBottom: 4 },
   logoIcon: { width: 72, height: 72, marginBottom: 8 },
   wordmark: { fontSize: 36, fontWeight: '800', color: colors.ink, letterSpacing: -1 },
   tagline: { fontSize: 11, fontWeight: '600', color: colors.muted, textAlign: 'center', letterSpacing: 0.8, marginTop: 4 },
-  title: { fontSize: 28, fontWeight: '800', color: colors.ink },
-  subtitle: { color: colors.muted, marginTop: 4 },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   label: { fontWeight: '600', color: colors.ink, marginBottom: 6 },
   input: {

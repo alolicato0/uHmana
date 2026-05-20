@@ -18,9 +18,13 @@ export const config = {
 
   mongoUri: required('MONGODB_URI'),
 
-  clerk: {
-    secretKey: required('CLERK_SECRET_KEY'),
-    publishableKey: required('CLERK_PUBLISHABLE_KEY'),
+  jwt: {
+    secret: required('JWT_SECRET'),
+    expiresIn: '30d',
+  },
+
+  google: {
+    clientId: required('GOOGLE_CLIENT_ID'),
   },
 
   openrouter: {

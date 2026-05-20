@@ -1,4 +1,4 @@
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth } from '../src/context/AuthContext';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
