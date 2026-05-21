@@ -151,16 +151,44 @@ function computeTrends(docs: ReportDoc[]): { label: string; dir: '↑' | '↓' |
   return trends.slice(0, 4);
 }
 
-const AI_ANALYSIS_PROMPT = `Sei un assistente medico AI. Analizza il documento allegato (referto, esame o visita medica) e rispondi ESCLUSIVAMENTE con un JSON valido, senza testo aggiuntivo, con questa struttura:
+const AI_ANALYSIS_PROMPT = `Sei un assistente medico AI. Analizza il documento allegato (referto, esame o visita medica) e rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo aggiuntivo prima o dopo.
+
+Struttura richiesta:
 {
-  "category": "Analisi del sangue" | "Radiologia" | "Esami strumentali" | "Visite specialistiche",
+  "category": <stringa ESATTA tra queste 4: "Analisi del sangue" oppure "Radiologia" oppure "Esami strumentali" oppure "Visite specialistiche">,
   "summary": "Riassunto in italiano semplice, 1-2 frasi, comprensibile a tutti",
   "bullets": ["punto chiave 1", "punto chiave 2", "punto chiave 3"],
-  "values": [
-    {"label": "Nome valore", "value": "numero o testo", "unit": "unità di misura", "status": "ok" | "warning" | "critical"}
-  ]
+  "values": [{"label": "Nome valore", "value": "numero", "unit": "unità", "status": "ok" oppure "warning" oppure "critical"}]
 }
-Regole: usa "warning" se il valore è fuori range ma non critico, "critical" se richiede attenzione urgente. Se non ci sono valori numerici, lascia "values" come array vuoto. Rispondi SOLO con il JSON.`;
+
+Regole categoria:
+- "Analisi del sangue": emocromo, lipidi, glicemia, ferritina, tiroide, urine, qualsiasi esame di laboratorio
+- "Radiologia": RX, TAC, risonanza magnetica, ecografia, mammografia, densitometria
+- "Esami strumentali": ECG, spirometria, endoscopia, gastroscopia, colonscopia, biopsia, audiometria
+- "Visite specialistiche": visita medica, referto ambulatoriale, lettera di dimissione, tutto il resto
+
+Regole valori: "warning" = fuori range ma non urgente, "critical" = richiede attenzione immediata. Se nessun valore numerico, usa "values": [].
+Rispondi SOLO con il JSON.`;
+
+// Fuzzy match: handles case differences and partial matches (e.g. "Analisi Del Sangue", "sangue", "radiografia")
+function resolveCategory(aiCat: string): string | null {
+  const norm = aiCat.toLowerCase().trim();
+  if (!norm) return null;
+  const FUZZY: { key: string; keywords: string[] }[] = [
+    { key: 'Analisi del sangue', keywords: ['sangue', 'laborator', 'ematic', 'lipid', 'glicemia', 'urin', 'ferritin', 'tiroid', 'analisi'] },
+    { key: 'Radiologia', keywords: ['radiolog', 'radiografi', 'rx', 'tac', 'risonanza', 'ecografi', 'mammografi', 'densitometr'] },
+    { key: 'Esami strumentali', keywords: ['strumental', 'ecg', 'elettrocard', 'spirometr', 'endoscopi', 'gastrscopi', 'colonscopi', 'biopsi', 'audiometr'] },
+    { key: 'Visite specialistiche', keywords: ['visita', 'specialist', 'ambulatorial', 'dimission', 'referto'] },
+  ];
+  // Exact match first (case-insensitive)
+  const exact = CATEGORIES.find((c) => c.key.toLowerCase() === norm);
+  if (exact) return exact.key;
+  // Keyword fuzzy match
+  for (const { key, keywords } of FUZZY) {
+    if (keywords.some((kw) => norm.includes(kw))) return key;
+  }
+  return null;
+}
 
 function parseAiResponse(raw: string): { summary: string; bullets: string[]; values: ReportValue[]; category: string } | null {
   try {
@@ -282,10 +310,8 @@ export default function ReportsScreen() {
       const fallback = generateAiAnalysis(name);
       const analysis = parsed ?? fallback;
 
-      // Category from AI if valid, else filename heuristic
-      const validCategories = CATEGORIES.map((c) => c.key);
-      const aiCat = parsed?.category ?? '';
-      const cat = validCategories.includes(aiCat) ? aiCat : detectCategory(name);
+      // Category from AI (fuzzy match), fallback to filename heuristic
+      const cat = resolveCategory(parsed?.category ?? '') ?? detectCategory(name);
 
       const catDocs = docsInCategory(cat);
       if (catDocs.length >= MAX_PER_CATEGORY) {
