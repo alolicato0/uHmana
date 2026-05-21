@@ -20,7 +20,7 @@ export interface DailyWellness {
   hydration: number; // 0-100
   energy: number;    // 0-100
   mood: number;      // 0-100
-  stress: number;    // 0-100 (100 = massimo stress)
+  stress: number;    // 0-100 — livello di Relax/Calma (100 = massimo relax)
 }
 
 interface SymptomsState {
