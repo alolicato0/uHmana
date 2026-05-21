@@ -50,11 +50,11 @@ const human: ModeConfig = {
 
   tiles: [
     {
-      icon: 'medkit-outline',
-      title: 'AI Medica',
-      subtitle: 'Parla con il dottore AI',
-      color: '#0DB09E',
-      route: '/(tabs)/chat',
+      icon: 'sparkles-outline',
+      title: 'Insight Salute',
+      subtitle: 'Analisi AI del tuo stato',
+      color: '#06B6D4',
+      route: '/insight',
     },
     {
       icon: 'flask-outline',
