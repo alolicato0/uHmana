@@ -1,9 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
   Modal,
+  PanResponder,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,6 +18,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../src/context/AuthContext';
+import { chat } from '../src/services/openrouter';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
@@ -49,6 +56,11 @@ const WELLNESS_ITEMS = [
   { key: 'stress' as const, emoji: '🧠', color: '#DC2626', invert: true },
 ] as const;
 
+// L=Lun, M=Mar, M=Mer, G=Gio, V=Ven, S=Sab, D=Dom (getDay(): 0=Dom)
+const DAY_LABELS = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+
+// ─── Helper puri (usabili anche fuori da React) ───────────────────────────────
+
 function intensityColor(v: number): string {
   return v <= 3 ? '#16A34A' : v <= 6 ? '#F59E0B' : '#DC2626';
 }
@@ -68,22 +80,67 @@ function levelLabel(v: number) {
   return v >= 70 ? 'Alta' : v >= 40 ? 'Media' : 'Bassa';
 }
 
-// ─── Schermata principale (compatta, no-scroll) ───────────────────────────────
+function computeHealthScore(logs: SymptomLog[], wellness: DailyWellness | null): number {
+  let score = 82;
+  const recent = logs.filter((l) => {
+    const daysAgo = (Date.now() - new Date(l.date).getTime()) / 86_400_000;
+    return daysAgo <= 3;
+  });
+  if (recent.length) {
+    const avg = recent.reduce((a, l) => a + l.intensity, 0) / recent.length;
+    score -= avg * 4;
+  }
+  if (wellness) {
+    const w =
+      (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + (100 - wellness.stress)) / 5;
+    score = score * 0.55 + w * 0.45;
+  }
+  return Math.max(10, Math.min(100, Math.round(score)));
+}
+
+function computeWeekTrend(logs: SymptomLog[]): { value: number; dayLabel: string; isToday: boolean }[] {
+  const result = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    const dayLogs = logs.filter((l) => l.date.startsWith(key));
+    const avg = dayLogs.length
+      ? dayLogs.reduce((a, l) => a + l.intensity, 0) / dayLogs.length
+      : 0;
+    result.push({ value: avg, dayLabel: DAY_LABELS[d.getDay()], isToday: i === 0 });
+  }
+  return result;
+}
+
+function buildInsight(logs: SymptomLog[], wellness: DailyWellness | null): string {
+  if (logs.length === 0) return 'Registra sintomi per ricevere insight personalizzati.';
+  const long = logs.find((l) => l.duration === 'week' || l.duration === 'longer');
+  if (long) return `"${long.name}" dura da tempo: valuta un consulto medico.`;
+  if (wellness && wellness.sleep < 40 && wellness.energy < 40)
+    return 'Sonno ed energia bassi: possibile correlazione con i sintomi.';
+  if (logs.filter((l) => l.intensity >= 7).length >= 2)
+    return 'Sintomi intensi recenti: tieni monitorato il quadro.';
+  return "Tocca per analizzare i tuoi sintomi con l'AI.";
+}
+
+// ─── Schermata principale ────────────────────────────────────────────────────
 
 export default function SintomiScreen() {
+  const { getToken } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SymptomLog | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [wellnessOpen, setWellnessOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
+  // Selectors reattivi: si ri-renderizza quando logs o wellness cambiano
   const logs = useSymptomsStore((s) => s.logs);
   const wellness = useSymptomsStore((s) => s.wellness);
   const removeLog = useSymptomsStore((s) => s.removeLog);
-  const getHealthScore = useSymptomsStore((s) => s.getHealthScore);
-  const getWeekTrend = useSymptomsStore((s) => s.getWeekTrend);
 
-  const score = getHealthScore();
-  const trend = getWeekTrend();
+  const score = computeHealthScore(logs, wellness);
+  const trend = computeWeekTrend(logs);
   const recent = logs.slice(0, 6);
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
@@ -153,22 +210,35 @@ export default function SintomiScreen() {
           <View style={styles.trendBox}>
             <Text style={styles.miniTitle}>Andamento 7gg</Text>
             <View style={styles.chartBars}>
-              {trend.map((v, i) => (
+              {trend.map((item, i) => (
                 <View key={i} style={styles.chartCol}>
                   <View
                     style={{
                       width: '70%',
-                      height: Math.max(3, (v / 10) * 42),
+                      height: Math.max(3, (item.value / 10) * 42),
                       borderRadius: 3,
-                      backgroundColor: v === 0 ? '#E5E7EB' : intensityColor(v),
+                      backgroundColor:
+                        item.value === 0
+                          ? '#E5E7EB'
+                          : item.isToday
+                          ? '#0DB09E'
+                          : intensityColor(item.value),
                     }}
                   />
+                  <Text
+                    style={[
+                      styles.chartDayLabel,
+                      item.isToday && { color: '#0DB09E', fontWeight: '700' },
+                    ]}
+                  >
+                    {item.dayLabel}
+                  </Text>
                 </View>
               ))}
             </View>
           </View>
 
-          <Pressable onPress={() => router.push('/(tabs)/chat')} style={styles.aiBox}>
+          <Pressable onPress={() => setChatOpen(true)} style={styles.aiBox}>
             <Ionicons name="sparkles" size={20} color="#3B82F6" />
             <Text style={styles.aiBoxTitle}>Insight AI</Text>
             <Text style={styles.aiBoxText} numberOfLines={2}>
@@ -178,8 +248,8 @@ export default function SintomiScreen() {
         </View>
       </View>
 
-      {/* FAB */}
-      <Pressable onPress={() => router.push('/(tabs)/chat')} style={styles.fab}>
+      {/* FAB — apre modal chat inline */}
+      <Pressable onPress={() => setChatOpen(true)} style={styles.fab}>
         <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
         <Text style={styles.fabText}>Chiedi all'AI</Text>
       </Pressable>
@@ -218,6 +288,15 @@ export default function SintomiScreen() {
 
       {/* Modal benessere */}
       <WellnessModal visible={wellnessOpen} wellness={wellness} onClose={() => setWellnessOpen(false)} />
+
+      {/* Modal chat AI inline */}
+      <SintomiChatModal
+        visible={chatOpen}
+        logs={recent}
+        wellness={wellness}
+        getToken={getToken}
+        onClose={() => setChatOpen(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -260,7 +339,7 @@ function HeroStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ─── Symptom card (con 3 puntini) ─────────────────────────────────────────────
+// ─── Symptom card ─────────────────────────────────────────────────────────────
 
 function SymptomCard({ log, onMenu }: { log: SymptomLog; onMenu: () => void }) {
   return (
@@ -279,17 +358,223 @@ function SymptomCard({ log, onMenu }: { log: SymptomLog; onMenu: () => void }) {
   );
 }
 
-// ─── Insight breve ────────────────────────────────────────────────────────────
+// ─── Slider intensità ─────────────────────────────────────────────────────────
 
-function buildInsight(logs: SymptomLog[], wellness: DailyWellness | null): string {
-  if (logs.length === 0) return 'Registra sintomi per ricevere insight personalizzati.';
-  const long = logs.find((l) => l.duration === 'week' || l.duration === 'longer');
-  if (long) return `"${long.name}" dura da tempo: valuta un consulto medico.`;
-  if (wellness && wellness.sleep < 40 && wellness.energy < 40)
-    return 'Sonno ed energia bassi: possibile correlazione con i sintomi.';
-  if (logs.filter((l) => l.intensity >= 7).length >= 2)
-    return 'Sintomi intensi recenti: tieni monitorato il quadro.';
-  return 'Tocca per analizzare i tuoi sintomi con l\'AI.';
+function IntensitySlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const trackRef = useRef<View>(null);
+  const trackInfo = useRef({ x: 0, width: 0 });
+
+  const applyPageX = (pageX: number) => {
+    const { x, width } = trackInfo.current;
+    if (width === 0) return;
+    const fraction = Math.max(0, Math.min(1, (pageX - x) / width));
+    onChange(Math.round(fraction * 9) + 1);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => applyPageX(e.nativeEvent.pageX),
+      onPanResponderMove: (e) => applyPageX(e.nativeEvent.pageX),
+    }),
+  ).current;
+
+  const fillFraction = (value - 1) / 9;
+  const color = intensityColor(value);
+
+  return (
+    <View
+      ref={trackRef}
+      {...panResponder.panHandlers}
+      onLayout={() => {
+        trackRef.current?.measure((_x, _y, w, _h, pageX) => {
+          trackInfo.current = { x: pageX, width: w };
+        });
+      }}
+      style={styles.sliderWrapper}
+    >
+      {/* Track */}
+      <View style={styles.sliderTrack}>
+        <View
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${fillFraction * 100}%` as unknown as number,
+            backgroundColor: color,
+            borderRadius: 4,
+          }}
+        />
+      </View>
+      {/* Thumb: posizionato al percentile corretto */}
+      <View
+        style={{
+          position: 'absolute',
+          left: `${fillFraction * 100}%` as unknown as number,
+          top: 0,
+          bottom: 0,
+          width: 0,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: color,
+            borderWidth: 2,
+            borderColor: '#fff',
+            elevation: 4,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+// ─── Chat AI inline ───────────────────────────────────────────────────────────
+
+type LocalMsg = { role: 'user' | 'assistant'; text: string };
+
+function SintomiChatModal({
+  visible,
+  logs,
+  wellness,
+  getToken,
+  onClose,
+}: {
+  visible: boolean;
+  logs: SymptomLog[];
+  wellness: DailyWellness | null;
+  getToken: () => Promise<string | null>;
+  onClose: () => void;
+}) {
+  const [messages, setMessages] = useState<LocalMsg[]>([]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const flatRef = useRef<FlatList<LocalMsg>>(null);
+
+  // Reset su ogni apertura
+  const [wasVisible, setWasVisible] = useState(false);
+  if (visible && !wasVisible) {
+    setWasVisible(true);
+    const welcome = `Ciao! Ho visto i tuoi dati.\n${logs.length > 0 ? `Hai registrato: ${logs.map((l) => `${l.emoji} ${l.name} (${intensityLabel(l.intensity)})`).join(', ')}.` : 'Nessun sintomo registrato.'}\n\nCome posso aiutarti?`;
+    setMessages([{ role: 'assistant', text: welcome }]);
+    setInput('');
+  }
+  if (!visible && wasVisible) {
+    setWasVisible(false);
+  }
+
+  const buildContext = () => {
+    const parts: string[] = [];
+    if (logs.length > 0) {
+      parts.push(`Sintomi: ${logs.map((l) => `${l.name} (intensità ${l.intensity}/10, durata: ${l.duration})`).join(', ')}.`);
+    }
+    if (wellness) {
+      parts.push(`Benessere: sonno ${wellness.sleep}%, idratazione ${wellness.hydration}%, energia ${wellness.energy}%, umore ${wellness.mood}%, stress ${wellness.stress}%.`);
+    }
+    return parts.join(' ');
+  };
+
+  const send = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || sending) return;
+    setInput('');
+    const updated: LocalMsg[] = [...messages, { role: 'user', text: trimmed }];
+    setMessages(updated);
+    setSending(true);
+    try {
+      const token = await getToken();
+      const history = updated.map((m, i) => ({
+        id: `m-${i}`,
+        role: m.role,
+        text: m.text,
+        createdAt: new Date().toISOString(),
+      }));
+      const reply = await chat({ history, extraContext: buildContext(), token });
+      setMessages((prev) => [...prev, { role: 'assistant', text: reply }]);
+    } catch {
+      setMessages((prev) => [...prev, { role: 'assistant', text: "Errore nel contattare l'AI. Riprova." }]);
+    } finally {
+      setSending(false);
+      setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 100);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.modalOverlay} />
+      </TouchableWithoutFeedback>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.chatSheet}>
+        <View style={styles.sheetHandle} />
+        <View style={styles.chatHeader}>
+          <Ionicons name="sparkles" size={18} color="#3B82F6" />
+          <Text style={styles.chatHeaderText}>Chiedi all'AI</Text>
+          <Pressable onPress={onClose} hitSlop={10} style={{ marginLeft: 'auto' }}>
+            <Ionicons name="close" size={22} color={colors.muted} />
+          </Pressable>
+        </View>
+        <FlatList
+          ref={flatRef}
+          data={messages}
+          keyExtractor={(_, i) => String(i)}
+          style={styles.chatList}
+          contentContainerStyle={{ padding: 12, gap: 10 }}
+          renderItem={({ item }) => (
+            <View
+              style={[
+                styles.chatBubble,
+                item.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAI,
+              ]}
+            >
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: item.role === 'user' ? '#fff' : colors.ink,
+                  lineHeight: 19,
+                }}
+              >
+                {item.text}
+              </Text>
+            </View>
+          )}
+        />
+        {sending && (
+          <View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
+            <ActivityIndicator size="small" color={colors.primary} />
+          </View>
+        )}
+        <View style={styles.chatInputRow}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Scrivi un messaggio..."
+            placeholderTextColor={colors.muted}
+            style={styles.chatInput}
+            onSubmitEditing={send}
+            returnKeyType="send"
+          />
+          <Pressable
+            onPress={send}
+            disabled={!input.trim() || sending}
+            style={[styles.chatSendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
+          >
+            <Ionicons name="send" size={18} color="#fff" />
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
 }
 
 // ─── Modal sintomo (add/edit) ─────────────────────────────────────────────────
@@ -313,7 +598,6 @@ function SymptomModal({
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
 
-  // Sincronizza quando si apre in modalità modifica
   const [lastVisible, setLastVisible] = useState(false);
   if (visible !== lastVisible) {
     setLastVisible(visible);
@@ -380,21 +664,7 @@ function SymptomModal({
           <>
             <Text style={styles.sheetTitle}>{selected.emoji} {selected.name}</Text>
             <Text style={styles.sheetLabel}>Intensità: {intensity}/10</Text>
-            <View style={styles.intensityRow}>
-              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                <Pressable
-                  key={n}
-                  onPress={() => setIntensity(n)}
-                  style={[
-                    styles.intensityDot,
-                    {
-                      backgroundColor: n <= intensity ? intensityColor(n) : '#E5E7EB',
-                      transform: [{ scale: n === intensity ? 1.25 : 1 }],
-                    },
-                  ]}
-                />
-              ))}
-            </View>
+            <IntensitySlider value={intensity} onChange={setIntensity} />
 
             <Text style={[styles.sheetLabel, { marginTop: 14 }]}>Durata</Text>
             <View style={styles.durationRow}>
@@ -601,8 +871,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   miniTitle: { fontSize: 12, fontWeight: '700', color: colors.ink, marginBottom: 8 },
-  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 46 },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 54 },
   chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+  chartDayLabel: { fontSize: 9, color: colors.muted, marginTop: 3, fontWeight: '600' },
 
   aiBox: {
     flex: 1,
@@ -672,8 +943,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  intensityRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  intensityDot: { width: 24, height: 24, borderRadius: 12 },
+
+  // Slider intensità
+  sliderWrapper: {
+    paddingVertical: 16,
+    marginBottom: 4,
+  },
+  sliderTrack: {
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+  },
+
   durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   durationChip: {
     paddingHorizontal: 14,
@@ -707,5 +988,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
+  },
+
+  // Chat modal
+  chatSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+    minHeight: '60%',
+  },
+  chatHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  chatHeaderText: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  chatList: { flex: 1 },
+  chatBubble: {
+    maxWidth: '85%',
+    borderRadius: 16,
+    padding: 12,
+  },
+  chatBubbleUser: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#0DB09E',
+    borderBottomRightRadius: 4,
+  },
+  chatBubbleAI: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#F3F4F6',
+    borderBottomLeftRadius: 4,
+  },
+  chatInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  chatInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.ink,
+    backgroundColor: '#F9FAFB',
+  },
+  chatSendBtn: {
+    backgroundColor: '#0DB09E',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

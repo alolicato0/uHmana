@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useSymptomsStore } from '../store/symptoms';
 import { apiGoogleAuth, apiLogin, apiRegister, type AuthUser } from '../services/auth';
 
 const ONBOARDED_KEY = 'uhmana_onboarded';
@@ -10,6 +11,7 @@ interface AuthState {
   isLoaded: boolean;
   isSignedIn: boolean;
   hasOnboarded: boolean;
+  hasPickedMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, name: string) => Promise<void>;
   signInWithGoogle: (accessToken: string) => Promise<void>;
@@ -25,6 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(false);
+  // hasPickedMode: solo in memoria — si azzera ad ogni avvio/logout, forza sempre la schermata welcome.
+  const [hasPickedMode, setHasPickedMode] = useState(false);
   // Sessione solo in memoria: nessuna persistenza, login richiesto ad ogni avvio.
   const tokenRef = useRef<string | null>(null);
 
@@ -38,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setOnboarded = useCallback(async () => {
     await SecureStore.setItemAsync(ONBOARDED_KEY, '1');
     setHasOnboarded(true);
+    setHasPickedMode(true);
   }, []);
 
   const persist = useCallback(async (t: string, u: AuthUser) => {
@@ -65,6 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     tokenRef.current = null;
     setToken(null);
     setUser(null);
+    setHasPickedMode(false);
+    // Rimuove il flag onboarded così il welcome riappare al prossimo login
+    await SecureStore.deleteItemAsync(ONBOARDED_KEY);
+    setHasOnboarded(false);
+    // Pulisce i dati locali dell'utente (isolamento per account)
+    useSymptomsStore.getState().clearAll();
   }, []);
 
   const getToken = useCallback(async (): Promise<string | null> => {
@@ -79,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoaded,
         isSignedIn: !!token,
         hasOnboarded,
+        hasPickedMode,
         signIn,
         signUp,
         signInWithGoogle,

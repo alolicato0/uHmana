@@ -1,12 +1,11 @@
 import { Redirect } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text, View } from 'react-native';
-import { Logo } from '../src/components/Logo';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '../src/context/AuthContext';
 import { colors } from '../src/theme';
 
 export default function Index() {
-  const { isLoaded, isSignedIn, hasOnboarded } = useAuth();
+  const { isLoaded, isSignedIn, hasPickedMode } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -16,16 +15,30 @@ export default function Index() {
 
   if (showSplash || !isLoaded) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-        <Logo size={96} />
-        <Text style={{ marginTop: 24, color: colors.muted, textAlign: 'center' }}>
-          La tua salute. La loro salute.{'\n'}Sempre insieme.
-        </Text>
+      <View style={styles.splash}>
+        <Image
+          source={require('../assets/images/logo-full.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
       </View>
     );
   }
 
   if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
-  if (!hasOnboarded) return <Redirect href="/welcome" />;
+  if (!hasPickedMode) return <Redirect href="/welcome" />;
   return <Redirect href="/(tabs)/home" />;
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  logo: {
+    width: 260,
+    height: 160,
+  },
+});
