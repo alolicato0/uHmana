@@ -16,6 +16,8 @@ export interface TrendItem {
   emoji: string;
   direction: 'up' | 'down' | 'stable';
   good: boolean;
+  value: number;        // 0-100 livello corrente
+  series?: number[];    // valori 0-100 per mini istogramma (se disponibile)
 }
 
 export interface InsightReport {
@@ -35,6 +37,27 @@ const DAY = 86_400_000;
 
 function levelDir(v: number): 'up' | 'down' | 'stable' {
   return v >= 65 ? 'up' : v <= 40 ? 'down' : 'stable';
+}
+
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Intensità media giornaliera dei sintomi negli ultimi 7 giorni, scala 0-100.
+function symptomWeekSeries(logs: SymptomLog[]): number[] {
+  const series: number[] = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const key = localDateKey(d);
+    const dayLogs = logs.filter((l) => l.date.startsWith(key));
+    const avg = dayLogs.length
+      ? dayLogs.reduce((a, l) => a + l.intensity, 0) / dayLogs.length
+      : 0;
+    series.push(Math.round(avg * 10)); // 1-10 → 10-100
+  }
+  return series;
 }
 
 function detectFrequencyIncrease(logs: SymptomLog[]): InsightCard | null {
@@ -167,13 +190,17 @@ export function buildInsightReport(
   // ── Trend ──
   const trends: TrendItem[] = [];
   if (wellness) {
-    trends.push({ label: 'Energia', emoji: '⚡', direction: levelDir(wellness.energy), good: wellness.energy >= 50 });
-    trends.push({ label: 'Relax', emoji: '😌', direction: levelDir(wellness.stress), good: wellness.stress >= 50 });
-    trends.push({ label: 'Sonno', emoji: '😴', direction: levelDir(wellness.sleep), good: wellness.sleep >= 50 });
+    trends.push({ label: 'Energia', emoji: '⚡', value: wellness.energy, direction: levelDir(wellness.energy), good: wellness.energy >= 50 });
+    trends.push({ label: 'Relax', emoji: '😌', value: wellness.stress, direction: levelDir(wellness.stress), good: wellness.stress >= 50 });
+    trends.push({ label: 'Sonno', emoji: '😴', value: wellness.sleep, direction: levelDir(wellness.sleep), good: wellness.sleep >= 50 });
+    trends.push({ label: 'Idratazione', emoji: '💧', value: wellness.hydration, direction: levelDir(wellness.hydration), good: wellness.hydration >= 50 });
   }
+  const symptomSeries = symptomWeekSeries(logs);
   trends.push({
-    label: 'Sintomi',
+    label: 'Sintomi (7gg)',
     emoji: '🩺',
+    value: last7.length,
+    series: symptomSeries,
     direction: last7.length === 0 ? 'down' : last7.length >= 4 ? 'up' : 'stable',
     good: last7.length < 4,
   });
