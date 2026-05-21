@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfileStore } from '../../src/store/profile';
 import { colors, radii } from '../../src/theme';
+import { VERSION_STRING } from '../../src/version';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -76,6 +77,8 @@ export default function ProfileScreen() {
             router.replace('/(auth)/sign-in');
           }}
         />
+
+        <Text style={styles.version}>{VERSION_STRING}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -151,5 +154,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     marginBottom: 8,
+  },
+  version: {
+    marginTop: 20,
+    fontSize: 11,
+    color: colors.muted,
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });

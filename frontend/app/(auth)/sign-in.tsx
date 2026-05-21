@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../../src/components/PrimaryButton';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, radii } from '../../src/theme';
+import { VERSION_STRING } from '../../src/version';
 
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
 
@@ -96,15 +97,10 @@ export default function SignInScreen() {
 
         <View style={styles.logoArea}>
           <Image
-            source={require('../../assets/images/icon.png')}
-            style={styles.logoIcon}
+            source={require('../../assets/images/logo-full.png')}
+            style={styles.logoFull}
             resizeMode="contain"
           />
-          <Text style={styles.wordmark}>
-            <Text style={{ color: '#00B5A6' }}>u</Text>
-            <Text style={{ color: '#0F172A' }}>Hmana</Text>
-          </Text>
-          <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
         </View>
 
         <View style={{ height: 20 }} />
@@ -162,6 +158,8 @@ export default function SignInScreen() {
             Registrati
           </Link>
         </View>
+
+        <Text style={styles.version}>{VERSION_STRING}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -169,9 +167,8 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   logoArea: { alignItems: 'center', marginBottom: 4 },
-  logoIcon: { width: 72, height: 72, marginBottom: 8 },
-  wordmark: { fontSize: 36, fontWeight: '800', color: colors.ink, letterSpacing: -1 },
-  tagline: { fontSize: 11, fontWeight: '600', color: colors.muted, textAlign: 'center', letterSpacing: 0.8, marginTop: 4 },
+  logoFull: { width: 200, height: 120 },
+  version: { marginTop: 20, fontSize: 11, color: colors.muted, textAlign: 'center', fontWeight: '600' },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 24 },
   line: { flex: 1, height: 1, backgroundColor: colors.border },
   label: { fontWeight: '600', color: colors.ink, marginBottom: 6 },

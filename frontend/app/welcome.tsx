@@ -3,11 +3,11 @@ import { useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PrimaryButton } from '../src/components/PrimaryButton';
-import { HumanIllustration, PetIllustration } from '../src/components/WelcomeIllustrations';
 import { useAuth } from '../src/context/AuthContext';
 import { useProfileStore } from '../src/store/profile';
 import { colors, radii } from '../src/theme';
 import type { ProfileKind } from '../src/types';
+import { VERSION_STRING } from '../src/version';
 
 export default function WelcomeScreen() {
   const setKind = useProfileStore((s) => s.setActiveKind);
@@ -26,15 +26,10 @@ export default function WelcomeScreen() {
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.header}>
           <Image
-            source={require('../assets/images/icon.png')}
-            style={styles.logoIcon}
+            source={require('../assets/images/logo-full.png')}
+            style={styles.logoFull}
             resizeMode="contain"
           />
-          <Text style={styles.wordmark}>
-            <Text style={{ color: '#00B5A6' }}>u</Text>
-            <Text style={{ color: '#0F172A' }}>Hmana</Text>
-          </Text>
-          <Text style={styles.tagline}>IL TUO ASSISTENTE DI SALUTE,{'\n'}SEMPRE CON TE.</Text>
         </View>
 
         <View style={{ height: 24 }} />
@@ -52,9 +47,11 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per me</Text>
             <Text style={styles.cardSub}>Salute, sintomi, terapie</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#4DB6AC' }]}>
-            <HumanIllustration />
-          </View>
+          <Image
+            source={require('../assets/images/welcome-human.png')}
+            style={styles.cardImage}
+            resizeMode="cover"
+          />
         </Pressable>
 
         <View style={{ height: 16 }} />
@@ -72,9 +69,11 @@ export default function WelcomeScreen() {
             <Text style={styles.cardTitle}>Sono qui per il mio animale</Text>
             <Text style={styles.cardSub}>Vaccini, dieta, comportamento</Text>
           </View>
-          <View style={[styles.cardImage, { backgroundColor: '#FFCC80' }]}>
-            <PetIllustration />
-          </View>
+          <Image
+            source={require('../assets/images/welcome-pet.png')}
+            style={styles.cardImage}
+            resizeMode="cover"
+          />
         </Pressable>
 
         <View style={{ flex: 1, minHeight: 32 }} />
@@ -83,6 +82,7 @@ export default function WelcomeScreen() {
         <Text style={styles.legal}>
           uHmana è un servizio di supporto informativo.{'\n'}Non sostituisce il parere di un medico o veterinario.
         </Text>
+        <Text style={styles.version}>{VERSION_STRING}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -90,18 +90,8 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 24, flexGrow: 1 },
-  header: { alignItems: 'center', paddingTop: 16, paddingBottom: 4 },
-  logoIcon: { width: 80, height: 80, marginBottom: 12 },
-  wordmark: { fontSize: 44, fontWeight: '800', letterSpacing: -1 },
-  tagline: {
-    marginTop: 8,
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#6B7280',
-    textAlign: 'center',
-    letterSpacing: 0.8,
-    lineHeight: 18,
-  },
+  header: { alignItems: 'center', paddingTop: 8, paddingBottom: 4 },
+  logoFull: { width: 220, height: 130 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -119,10 +109,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 19, fontWeight: '700', color: colors.ink, lineHeight: 26 },
   cardSub: { marginTop: 6, fontSize: 13, color: colors.muted, fontWeight: '500' },
   cardImage: {
-    width: 130,
+    width: 140,
     alignSelf: 'stretch',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   legal: {
     marginTop: 16,
@@ -130,5 +118,12 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: 'center',
     lineHeight: 16,
+  },
+  version: {
+    marginTop: 10,
+    fontSize: 11,
+    color: colors.muted,
+    textAlign: 'center',
+    fontWeight: '600',
   },
 });
