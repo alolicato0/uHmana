@@ -1,8 +1,8 @@
 /**
  * Client API verso il backend uHmana su Render.
  *
- * L'autenticazione usa il JWT di Clerk: chi chiama `apiFetch` deve passare
- * il token ottenuto via `getToken()` dal hook `useAuth()` di Clerk.
+ * L'autenticazione usa un JWT custom: chi chiama `apiFetch` deve passare
+ * il token ottenuto via `getToken()` dal hook `useAuth()`.
  */
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? '';

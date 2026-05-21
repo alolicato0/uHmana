@@ -71,7 +71,10 @@ export default function ProfileScreen() {
           icon="log-out-outline"
           title="Esci"
           subtitle=""
-          onPress={() => signOut()}
+          onPress={async () => {
+            await signOut();
+            router.replace('/(auth)/sign-in');
+          }}
         />
       </ScrollView>
     </SafeAreaView>

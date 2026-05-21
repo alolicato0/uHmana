@@ -1,9 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import {
-  Animated,
   Modal,
   Pressable,
   ScrollView,
@@ -14,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { SymptomDuration, SymptomLog } from '../src/store/symptoms';
+import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
 
@@ -42,37 +41,54 @@ const DURATION_LABELS: Record<SymptomDuration, string> = {
   longer: 'Più di 1 settimana',
 };
 
-const DAYS_SHORT = ['Lu', 'Ma', 'Me', 'Gi', 'Ve', 'Sa', 'Do'];
+const WELLNESS_ITEMS = [
+  { key: 'sleep' as const, emoji: '😴', color: '#5B7CFA' },
+  { key: 'hydration' as const, emoji: '💧', color: '#0DB09E' },
+  { key: 'energy' as const, emoji: '⚡', color: '#F59E0B' },
+  { key: 'mood' as const, emoji: '😊', color: '#EC4899' },
+  { key: 'stress' as const, emoji: '🧠', color: '#DC2626', invert: true },
+] as const;
 
-function getScoreColor(score: number): string {
-  if (score >= 75) return '#16A34A';
-  if (score >= 50) return '#F59E0B';
-  return '#DC2626';
+function intensityColor(v: number): string {
+  return v <= 3 ? '#16A34A' : v <= 6 ? '#F59E0B' : '#DC2626';
 }
-function getScoreLabel(score: number): string {
-  if (score >= 75) return 'Buono';
-  if (score >= 50) return 'Attenzione';
-  return 'Critico';
+function intensityLabel(v: number): string {
+  return v <= 3 ? 'Lieve' : v <= 6 ? 'Moderato' : 'Forte';
+}
+function scoreColor(s: number): string {
+  return s >= 75 ? '#16A34A' : s >= 50 ? '#F59E0B' : '#DC2626';
+}
+function scoreLabel(s: number): string {
+  return s >= 75 ? 'Buono' : s >= 50 ? 'Attenzione' : 'Critico';
+}
+function stressLabel(v: number) {
+  return v <= 30 ? 'Basso' : v <= 60 ? 'Medio' : 'Alto';
+}
+function levelLabel(v: number) {
+  return v >= 70 ? 'Alta' : v >= 40 ? 'Media' : 'Bassa';
 }
 
-// ─── Schermata principale ─────────────────────────────────────────────────────
+// ─── Schermata principale (compatta, no-scroll) ───────────────────────────────
 
 export default function SintomiScreen() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<SymptomLog | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [wellnessOpen, setWellnessOpen] = useState(false);
+
   const logs = useSymptomsStore((s) => s.logs);
   const wellness = useSymptomsStore((s) => s.wellness);
+  const removeLog = useSymptomsStore((s) => s.removeLog);
   const getHealthScore = useSymptomsStore((s) => s.getHealthScore);
   const getWeekTrend = useSymptomsStore((s) => s.getWeekTrend);
-  const getRecentLogs = useSymptomsStore((s) => s.getRecentLogs);
 
   const score = getHealthScore();
   const trend = getWeekTrend();
-  const recent = getRecentLogs(5);
-  const scoreColor = getScoreColor(score);
+  const recent = logs.slice(0, 6);
 
-  const todayLogs = logs.filter((l) =>
-    l.date.startsWith(new Date().toISOString().slice(0, 10)),
-  );
+  const openAdd = () => { setEditing(null); setModalOpen(true); };
+  const openEdit = (log: SymptomLog) => { setMenuFor(null); setEditing(log); setModalOpen(true); };
+  const doRemove = (id: string) => { setMenuFor(null); removeLog(id); };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F0F9F8' }}>
@@ -83,419 +99,213 @@ export default function SintomiScreen() {
         </Pressable>
         <View>
           <Text style={styles.headerTitle}>Sintomi & Benessere</Text>
-          <Text style={styles.headerSub}>Monitora il tuo stato giorno dopo giorno</Text>
+          <Text style={styles.headerSub}>Monitora il tuo stato</Text>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <View style={styles.body}>
+        {/* HERO compatto */}
+        <HealthScoreCard score={score} wellness={wellness} />
 
-        {/* 1 — HEALTH SCORE HERO */}
-        <HealthScoreCard score={score} scoreColor={scoreColor} wellness={wellness} />
+        {/* SINTOMI + add */}
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionTitle}>Sintomi recenti</Text>
+          <Pressable onPress={openAdd} style={styles.addInline}>
+            <Ionicons name="add" size={16} color="#fff" />
+            <Text style={styles.addInlineText}>Registra</Text>
+          </Pressable>
+        </View>
 
-        <View style={{ height: 16 }} />
-
-        {/* 2 — QUICK SYMPTOMS */}
-        <SectionTitle title="Sintomi recenti" />
-        <View style={{ height: 8 }} />
-        <QuickSymptomsGrid todayLogs={todayLogs} />
-
-        <View style={{ height: 16 }} />
-
-        {/* 3 — ADD SYMPTOM */}
-        <Pressable onPress={() => setModalOpen(true)} style={styles.addBtn}>
-          <Ionicons name="add-circle" size={22} color="#fff" />
-          <Text style={styles.addBtnText}>Registra sintomo</Text>
-        </Pressable>
-
-        <View style={{ height: 20 }} />
-
-        {/* 4 — TREND 7 GIORNI */}
-        <SectionTitle title="Andamento 7 giorni" subtitle="Media intensità sintomi" />
-        <View style={{ height: 8 }} />
-        <TrendChart data={trend} />
-
-        <View style={{ height: 20 }} />
-
-        {/* 5 — AI INSIGHTS */}
-        <SectionTitle title="Insight AI" />
-        <View style={{ height: 8 }} />
-        <AiInsightsCard logs={recent} wellness={wellness} />
-
-        <View style={{ height: 20 }} />
-
-        {/* 6 — WELLNESS TRACKER */}
-        <SectionTitle title="Benessere generale" subtitle="Aggiorna il tuo stato quotidiano" />
-        <View style={{ height: 8 }} />
-        <WellnessTracker wellness={wellness} />
-
-        <View style={{ height: 20 }} />
-
-        {/* 7 — STORICO RECENTE */}
-        {recent.length > 0 && (
-          <>
-            <SectionTitle title="Storico recente" />
-            <View style={{ height: 8 }} />
+        {recent.length === 0 ? (
+          <Pressable onPress={openAdd} style={styles.emptyCard}>
+            <Text style={{ fontSize: 26 }}>🩺</Text>
+            <Text style={styles.emptyText}>Nessun sintomo registrato.{'\n'}Tocca per aggiungerne uno.</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.symGrid}>
             {recent.map((l) => (
-              <HistoryRow key={l.id} log={l} />
+              <SymptomCard key={l.id} log={l} onMenu={() => setMenuFor(l.id)} />
             ))}
-          </>
+          </View>
         )}
-      </ScrollView>
 
-      {/* FAB — Chiedi all'AI */}
-      <Pressable
-        onPress={() => router.push('/(tabs)/chat')}
-        style={styles.fab}
-      >
-        <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+        {/* BENESSERE compatto */}
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionTitle}>Benessere</Text>
+          <Pressable onPress={() => setWellnessOpen(true)}>
+            <Text style={styles.linkText}>Aggiorna</Text>
+          </Pressable>
+        </View>
+        <View style={styles.wellnessStrip}>
+          {WELLNESS_ITEMS.map((it) => {
+            const v = wellness ? wellness[it.key] : null;
+            return (
+              <View key={it.key} style={styles.wellnessPill}>
+                <Text style={{ fontSize: 18 }}>{it.emoji}</Text>
+                <Text style={styles.wellnessVal}>{v !== null ? `${v}%` : '—'}</Text>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* TREND + AI riga */}
+        <View style={styles.bottomRow}>
+          <View style={styles.trendBox}>
+            <Text style={styles.miniTitle}>Andamento 7gg</Text>
+            <View style={styles.chartBars}>
+              {trend.map((v, i) => (
+                <View key={i} style={styles.chartCol}>
+                  <View
+                    style={{
+                      width: '70%',
+                      height: Math.max(3, (v / 10) * 42),
+                      borderRadius: 3,
+                      backgroundColor: v === 0 ? '#E5E7EB' : intensityColor(v),
+                    }}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+
+          <Pressable onPress={() => router.push('/(tabs)/chat')} style={styles.aiBox}>
+            <Ionicons name="sparkles" size={20} color="#3B82F6" />
+            <Text style={styles.aiBoxTitle}>Insight AI</Text>
+            <Text style={styles.aiBoxText} numberOfLines={2}>
+              {buildInsight(recent, wellness)}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+
+      {/* FAB */}
+      <Pressable onPress={() => router.push('/(tabs)/chat')} style={styles.fab}>
+        <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
         <Text style={styles.fabText}>Chiedi all'AI</Text>
       </Pressable>
 
-      {/* Modal aggiunta sintomo */}
-      <AddSymptomModal visible={modalOpen} onClose={() => setModalOpen(false)} />
+      {/* Menu 3 puntini */}
+      <Modal visible={!!menuFor} transparent animationType="fade" onRequestClose={() => setMenuFor(null)}>
+        <TouchableWithoutFeedback onPress={() => setMenuFor(null)}>
+          <View style={styles.menuOverlay}>
+            <View style={styles.menuSheet}>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  const log = logs.find((l) => l.id === menuFor);
+                  if (log) openEdit(log);
+                }}
+              >
+                <Ionicons name="create-outline" size={20} color={colors.ink} />
+                <Text style={styles.menuText}>Modifica</Text>
+              </Pressable>
+              <View style={styles.menuDivider} />
+              <Pressable style={styles.menuItem} onPress={() => menuFor && doRemove(menuFor)}>
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                <Text style={[styles.menuText, { color: colors.danger }]}>Elimina</Text>
+              </Pressable>
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Modal aggiunta/modifica sintomo */}
+      <SymptomModal
+        visible={modalOpen}
+        editing={editing}
+        onClose={() => { setModalOpen(false); setEditing(null); }}
+      />
+
+      {/* Modal benessere */}
+      <WellnessModal visible={wellnessOpen} wellness={wellness} onClose={() => setWellnessOpen(false)} />
     </SafeAreaView>
   );
 }
 
-// ─── Health Score ─────────────────────────────────────────────────────────────
+// ─── Hero compatto ────────────────────────────────────────────────────────────
 
-function HealthScoreCard({
-  score,
-  scoreColor,
-  wellness,
-}: {
-  score: number;
-  scoreColor: string;
-  wellness: ReturnType<typeof useSymptomsStore.getState>['wellness'];
-}) {
+function HealthScoreCard({ score, wellness }: { score: number; wellness: DailyWellness | null }) {
   const gradient: [string, string] =
     score >= 75 ? ['#0DB09E', '#22C55E'] : score >= 50 ? ['#F59E0B', '#EF4444'] : ['#EF4444', '#DC2626'];
-
   return (
-    <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.heroCard}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Ionicons name="heart" size={16} color="#fff" />
-        <Text style={styles.heroLabel}>Stato generale</Text>
-      </View>
-
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 12 }}>
-        <Text style={styles.heroScore}>{score}</Text>
-        <Text style={styles.heroScoreMax}>/100</Text>
-        <View style={styles.heroStatusBadge}>
-          <Text style={styles.heroStatusText}>{getScoreLabel(score)}</Text>
+    <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Ionicons name="heart" size={14} color="#fff" />
+          <Text style={styles.heroLabel}>Stato generale</Text>
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', marginTop: 4 }}>
+          <Text style={styles.heroScore}>{score}</Text>
+          <Text style={styles.heroMax}>/100</Text>
+          <View style={styles.heroBadge}>
+            <Text style={styles.heroBadgeText}>{scoreLabel(score)}</Text>
+          </View>
         </View>
       </View>
-
       <View style={styles.heroStats}>
         <HeroStat label="Stress" value={wellness ? stressLabel(wellness.stress) : '—'} />
         <HeroStat label="Energia" value={wellness ? levelLabel(wellness.energy) : '—'} />
         <HeroStat label="Sonno" value={wellness ? levelLabel(wellness.sleep) : '—'} />
       </View>
-
-      <Text style={styles.heroUpdate}>
-        Ultimo aggiornamento: {new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
-      </Text>
     </LinearGradient>
   );
 }
 
 function HeroStat({ label, value }: { label: string; value: string }) {
   return (
-    <View style={{ alignItems: 'center' }}>
-      <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>{label}</Text>
-      <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', marginTop: 2 }}>{value}</Text>
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={{ color: 'rgba(255,255,255,0.75)', fontSize: 10 }}>{label}</Text>
+      <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>{value}</Text>
     </View>
   );
 }
 
-function stressLabel(v: number): string {
-  if (v <= 30) return 'Basso';
-  if (v <= 60) return 'Medio';
-  return 'Alto';
-}
-function levelLabel(v: number): string {
-  if (v >= 70) return 'Alta';
-  if (v >= 40) return 'Media';
-  return 'Bassa';
-}
+// ─── Symptom card (con 3 puntini) ─────────────────────────────────────────────
 
-// ─── Quick Symptoms ──────────────────────────────────────────────────────────
-
-const QUICK_SYMPTOMS = [
-  { name: 'Mal di testa', emoji: '🤕' },
-  { name: 'Tosse', emoji: '🤧' },
-  { name: 'Febbre', emoji: '🤒' },
-  { name: 'Stanchezza', emoji: '😴' },
-];
-
-function QuickSymptomsGrid({ todayLogs }: { todayLogs: SymptomLog[] }) {
+function SymptomCard({ log, onMenu }: { log: SymptomLog; onMenu: () => void }) {
   return (
-    <View style={styles.grid2}>
-      {QUICK_SYMPTOMS.map((s) => {
-        const match = todayLogs.find((l) => l.name === s.name);
-        return (
-          <View key={s.name} style={styles.quickCard}>
-            <Text style={{ fontSize: 24 }}>{s.emoji}</Text>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={{ fontWeight: '600', fontSize: 13 }}>{s.name}</Text>
-              <Text style={{ color: match ? getScoreColor(100 - match.intensity * 10) : colors.muted, fontSize: 12, marginTop: 2 }}>
-                {match ? intensityLabel(match.intensity) : 'Assente'}
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.quickDot,
-                { backgroundColor: match ? getScoreColor(100 - match.intensity * 10) : '#E5E7EB' },
-              ]}
-            />
-          </View>
-        );
-      })}
-    </View>
-  );
-}
-
-function intensityLabel(v: number): string {
-  if (v <= 3) return 'Lieve';
-  if (v <= 6) return 'Moderato';
-  return 'Forte';
-}
-
-// ─── Trend Chart ─────────────────────────────────────────────────────────────
-
-function TrendChart({ data }: { data: number[] }) {
-  const max = Math.max(...data, 1);
-  const today = new Date().getDay(); // 0=Dom
-  const dayIdx = today === 0 ? 6 : today - 1;
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.chartBars}>
-        {data.map((v, i) => {
-          const height = Math.max(4, (v / 10) * 80);
-          const isToday = i === 6;
-          const barColor = v === 0 ? '#E5E7EB' : v <= 3 ? '#16A34A' : v <= 6 ? '#F59E0B' : '#DC2626';
-          return (
-            <View key={i} style={styles.chartBarCol}>
-              <View style={[styles.chartBarBg]}>
-                <View style={[styles.chartBar, { height, backgroundColor: barColor }]} />
-              </View>
-              <Text style={[styles.chartLabel, isToday && { color: '#0DB09E', fontWeight: '700' }]}>
-                {DAYS_SHORT[(new Date().getDay() + i - 6 + 7) % 7]}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-      <View style={styles.chartLegend}>
-        <LegendDot color="#16A34A" label="Lieve" />
-        <LegendDot color="#F59E0B" label="Moderato" />
-        <LegendDot color="#DC2626" label="Forte" />
-      </View>
-    </View>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
-      <Text style={{ fontSize: 11, color: colors.muted }}>{label}</Text>
-    </View>
-  );
-}
-
-// ─── AI Insights ─────────────────────────────────────────────────────────────
-
-function AiInsightsCard({
-  logs,
-  wellness,
-}: {
-  logs: SymptomLog[];
-  wellness: ReturnType<typeof useSymptomsStore.getState>['wellness'];
-}) {
-  const insights = buildInsights(logs, wellness);
-  return (
-    <View style={[styles.card, { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
-        <Ionicons name="sparkles" size={16} color="#3B82F6" />
-        <Text style={{ fontWeight: '700', fontSize: 14, color: '#1D4ED8', marginLeft: 6 }}>Insight AI</Text>
-      </View>
-      {insights.length === 0 ? (
-        <Text style={{ color: colors.muted, fontSize: 13 }}>
-          Registra qualche sintomo per ricevere i tuoi insight personalizzati.
+    <View style={styles.symCard}>
+      <Text style={{ fontSize: 22 }}>{log.emoji}</Text>
+      <View style={{ flex: 1, marginLeft: 8 }}>
+        <Text style={styles.symName} numberOfLines={1}>{log.name}</Text>
+        <Text style={[styles.symStatus, { color: intensityColor(log.intensity) }]}>
+          {intensityLabel(log.intensity)}
         </Text>
-      ) : (
-        insights.map((ins, i) => (
-          <Text key={i} style={styles.insightText}>
-            {ins}
-          </Text>
-        ))
-      )}
-      <Pressable onPress={() => router.push('/(tabs)/chat')} style={styles.insightBtn}>
-        <Text style={{ color: '#3B82F6', fontWeight: '600', fontSize: 13 }}>Approfondisci con l'AI →</Text>
+      </View>
+      <Pressable onPress={onMenu} hitSlop={8} style={styles.dots}>
+        <Ionicons name="ellipsis-vertical" size={16} color={colors.muted} />
       </Pressable>
     </View>
   );
 }
 
-function buildInsights(logs: SymptomLog[], wellness: DailyWellness | null): string[] {
-  const out: string[] = [];
-  if (logs.length === 0) return out;
+// ─── Insight breve ────────────────────────────────────────────────────────────
 
-  const names = logs.map((l) => l.name);
-  const freq: Record<string, number> = {};
-  for (const n of names) freq[n] = (freq[n] ?? 0) + 1;
-  const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
-  if (top && top[1] >= 2) out.push(`"${top[0]}" compare frequentemente nei tuoi log recenti.`);
-
-  const highIntensity = logs.filter((l) => l.intensity >= 7);
-  if (highIntensity.length >= 2) out.push('Hai registrato sintomi ad alta intensità di recente. Considera una visita medica.');
-
+function buildInsight(logs: SymptomLog[], wellness: DailyWellness | null): string {
+  if (logs.length === 0) return 'Registra sintomi per ricevere insight personalizzati.';
+  const long = logs.find((l) => l.duration === 'week' || l.duration === 'longer');
+  if (long) return `"${long.name}" dura da tempo: valuta un consulto medico.`;
   if (wellness && wellness.sleep < 40 && wellness.energy < 40)
-    out.push('Sonno insufficiente ed energia bassa: possibile correlazione con i sintomi riportati.');
-
-  if (wellness && wellness.stress > 70)
-    out.push('Livello di stress elevato: può amplificare la percezione del dolore e abbassare le difese.');
-
-  const longDuration = logs.filter((l) => l.duration === 'week' || l.duration === 'longer');
-  if (longDuration.length > 0)
-    out.push(`"${longDuration[0].name}" dura da oltre una settimana: potrebbe essere utile un consulto medico.`);
-
-  return out.slice(0, 3);
+    return 'Sonno ed energia bassi: possibile correlazione con i sintomi.';
+  if (logs.filter((l) => l.intensity >= 7).length >= 2)
+    return 'Sintomi intensi recenti: tieni monitorato il quadro.';
+  return 'Tocca per analizzare i tuoi sintomi con l\'AI.';
 }
 
-import type { DailyWellness } from '../src/store/symptoms';
+// ─── Modal sintomo (add/edit) ─────────────────────────────────────────────────
 
-// ─── Wellness Tracker ─────────────────────────────────────────────────────────
-
-const WELLNESS_ITEMS = [
-  { key: 'sleep' as const, label: 'Sonno', emoji: '😴', color: '#5B7CFA' },
-  { key: 'hydration' as const, label: 'Idratazione', emoji: '💧', color: '#0DB09E' },
-  { key: 'energy' as const, label: 'Energia', emoji: '⚡', color: '#F59E0B' },
-  { key: 'mood' as const, label: 'Umore', emoji: '😊', color: '#EC4899' },
-  { key: 'stress' as const, label: 'Stress', emoji: '🧠', color: '#DC2626', invert: true },
-] as const;
-
-function WellnessTracker({ wellness }: { wellness: DailyWellness | null }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({
-    sleep: wellness?.sleep ?? 60,
-    hydration: wellness?.hydration ?? 50,
-    energy: wellness?.energy ?? 70,
-    mood: wellness?.mood ?? 65,
-    stress: wellness?.stress ?? 40,
-  });
-  const setWellness = useSymptomsStore((s) => s.setWellness);
-
-  return (
-    <View style={styles.card}>
-      {WELLNESS_ITEMS.map((item) => {
-        const raw = wellness ? wellness[item.key] : null;
-        const val = editing ? draft[item.key] : (raw ?? null);
-        return (
-          <View key={item.key} style={styles.wellnessRow}>
-            <Text style={{ fontSize: 20, width: 28 }}>{item.emoji}</Text>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontWeight: '600', fontSize: 13 }}>{item.label}</Text>
-                <Text style={{ fontSize: 12, color: colors.muted }}>{val !== null ? `${val}%` : '—'}</Text>
-              </View>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    {
-                      width: `${val ?? 0}%`,
-                      backgroundColor: item.invert && val !== null && val > 60 ? '#DC2626' : item.color,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-        );
-      })}
-
-      {editing ? (
-        <View style={{ marginTop: 12, gap: 8 }}>
-          {WELLNESS_ITEMS.map((item) => (
-            <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Text style={{ width: 80, fontSize: 12, color: colors.muted }}>{item.label}</Text>
-              <View style={{ flex: 1, flexDirection: 'row', gap: 4, flexWrap: 'wrap' }}>
-                {[20, 40, 60, 80, 100].map((v) => (
-                  <Pressable
-                    key={v}
-                    onPress={() => setDraft((d) => ({ ...d, [item.key]: v }))}
-                    style={[
-                      styles.wellnessChip,
-                      draft[item.key] === v && { backgroundColor: item.color },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 11, color: draft[item.key] === v ? '#fff' : colors.muted }}>
-                      {v}%
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          ))}
-          <Pressable
-            onPress={() => { setWellness(draft); setEditing(false); }}
-            style={styles.saveBtnSmall}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Salva</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <Pressable onPress={() => setEditing(true)} style={styles.editWellnessBtn}>
-          <Ionicons name="create-outline" size={14} color="#0DB09E" />
-          <Text style={{ color: '#0DB09E', fontSize: 13, fontWeight: '600', marginLeft: 4 }}>
-            Aggiorna benessere
-          </Text>
-        </Pressable>
-      )}
-    </View>
-  );
-}
-
-// ─── History Row ──────────────────────────────────────────────────────────────
-
-function HistoryRow({ log }: { log: SymptomLog }) {
-  const d = new Date(log.date);
-  const dateStr = d.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
-  const timeStr = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
-  return (
-    <View style={styles.historyRow}>
-      <Text style={{ fontSize: 22, marginRight: 10 }}>{log.emoji}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontWeight: '600', fontSize: 13 }}>{log.name}</Text>
-        <Text style={{ color: colors.muted, fontSize: 12 }}>
-          {intensityLabel(log.intensity)} · {DURATION_LABELS[log.duration]}
-        </Text>
-      </View>
-      <Text style={{ color: colors.muted, fontSize: 11 }}>
-        {dateStr} {timeStr}
-      </Text>
-    </View>
-  );
-}
-
-// ─── Helpers UI ───────────────────────────────────────────────────────────────
-
-function SectionTitle({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <View>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {subtitle && <Text style={styles.sectionSub}>{subtitle}</Text>}
-    </View>
-  );
-}
-
-// ─── Add Symptom Modal ───────────────────────────────────────────────────────
-
-function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function SymptomModal({
+  visible,
+  editing,
+  onClose,
+}: {
+  visible: boolean;
+  editing: SymptomLog | null;
+  onClose: () => void;
+}) {
   const addLog = useSymptomsStore((s) => s.addLog);
+  const updateLog = useSymptomsStore((s) => s.updateLog);
+
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<{ name: string; emoji: string } | null>(null);
   const [intensity, setIntensity] = useState(5);
@@ -503,31 +313,42 @@ function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () =
   const [notes, setNotes] = useState('');
   const [search, setSearch] = useState('');
 
-  const filtered = PRESET_SYMPTOMS.filter((s) =>
-    s.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  // Sincronizza quando si apre in modalità modifica
+  const [lastVisible, setLastVisible] = useState(false);
+  if (visible !== lastVisible) {
+    setLastVisible(visible);
+    if (visible) {
+      if (editing) {
+        setSelected({ name: editing.name, emoji: editing.emoji });
+        setIntensity(editing.intensity);
+        setDuration(editing.duration);
+        setNotes(editing.notes);
+        setStep(1);
+      } else {
+        setSelected(null); setIntensity(5); setDuration('today'); setNotes(''); setStep(0);
+      }
+      setSearch('');
+    }
+  }
 
-  const reset = () => {
-    setStep(0); setSelected(null); setIntensity(5);
-    setDuration('today'); setNotes(''); setSearch('');
-  };
+  const filtered = PRESET_SYMPTOMS.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
 
-  const handleClose = () => { reset(); onClose(); };
-
-  const handleSave = () => {
+  const save = () => {
     if (!selected) return;
-    addLog({ name: selected.name, emoji: selected.emoji, intensity, duration, notes });
-    handleClose();
+    if (editing) {
+      updateLog(editing.id, { name: selected.name, emoji: selected.emoji, intensity, duration, notes });
+    } else {
+      addLog({ name: selected.name, emoji: selected.emoji, intensity, duration, notes });
+    }
+    onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <TouchableWithoutFeedback onPress={handleClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.modalOverlay} />
       </TouchableWithoutFeedback>
-
-      <View style={styles.bottomSheet}>
-        {/* Handle */}
+      <View style={styles.sheet}>
         <View style={styles.sheetHandle} />
 
         {step === 0 && (
@@ -540,7 +361,7 @@ function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () =
               onChangeText={setSearch}
               style={styles.searchInput}
             />
-            <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
               {filtered.map((s) => (
                 <Pressable
                   key={s.name}
@@ -557,13 +378,25 @@ function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () =
 
         {step === 1 && selected && (
           <>
-            <Text style={styles.sheetTitle}>
-              {selected.emoji} {selected.name}
-            </Text>
+            <Text style={styles.sheetTitle}>{selected.emoji} {selected.name}</Text>
             <Text style={styles.sheetLabel}>Intensità: {intensity}/10</Text>
-            <IntensitySlider value={intensity} onChange={setIntensity} />
+            <View style={styles.intensityRow}>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                <Pressable
+                  key={n}
+                  onPress={() => setIntensity(n)}
+                  style={[
+                    styles.intensityDot,
+                    {
+                      backgroundColor: n <= intensity ? intensityColor(n) : '#E5E7EB',
+                      transform: [{ scale: n === intensity ? 1.25 : 1 }],
+                    },
+                  ]}
+                />
+              ))}
+            </View>
 
-            <Text style={[styles.sheetLabel, { marginTop: 16 }]}>Durata</Text>
+            <Text style={[styles.sheetLabel, { marginTop: 14 }]}>Durata</Text>
             <View style={styles.durationRow}>
               {(['today', '3days', 'week', 'longer'] as SymptomDuration[]).map((d) => (
                 <Pressable
@@ -578,22 +411,26 @@ function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () =
               ))}
             </View>
 
-            <Text style={[styles.sheetLabel, { marginTop: 16 }]}>Note (opzionale)</Text>
+            <Text style={[styles.sheetLabel, { marginTop: 14 }]}>Note (opzionale)</Text>
             <TextInput
               placeholder="Aggiungi una nota..."
               placeholderTextColor={colors.muted}
               value={notes}
               onChangeText={setNotes}
               multiline
-              style={[styles.searchInput, { height: 72, textAlignVertical: 'top' }]}
+              style={[styles.searchInput, { height: 64, textAlignVertical: 'top' }]}
             />
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-              <Pressable onPress={() => setStep(0)} style={styles.backBtnSheet}>
-                <Text style={{ color: colors.ink, fontWeight: '600' }}>Indietro</Text>
-              </Pressable>
-              <Pressable onPress={handleSave} style={[styles.saveBtnSheet, { flex: 2 }]}>
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Salva</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+              {!editing && (
+                <Pressable onPress={() => setStep(0)} style={styles.backBtnSheet}>
+                  <Text style={{ color: colors.ink, fontWeight: '600' }}>Indietro</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={save} style={[styles.saveBtnSheet, { flex: 2 }]}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+                  {editing ? 'Salva modifiche' : 'Salva'}
+                </Text>
               </Pressable>
             </View>
           </>
@@ -603,32 +440,64 @@ function AddSymptomModal({ visible, onClose }: { visible: boolean; onClose: () =
   );
 }
 
-function IntensitySlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+// ─── Modal benessere ──────────────────────────────────────────────────────────
+
+function WellnessModal({
+  visible,
+  wellness,
+  onClose,
+}: {
+  visible: boolean;
+  wellness: DailyWellness | null;
+  onClose: () => void;
+}) {
+  const setWellness = useSymptomsStore((s) => s.setWellness);
+  const [draft, setDraft] = useState({
+    sleep: wellness?.sleep ?? 60,
+    hydration: wellness?.hydration ?? 50,
+    energy: wellness?.energy ?? 70,
+    mood: wellness?.mood ?? 65,
+    stress: wellness?.stress ?? 40,
+  });
+  const labels: Record<string, string> = {
+    sleep: 'Sonno', hydration: 'Idratazione', energy: 'Energia', mood: 'Umore', stress: 'Stress',
+  };
+
   return (
-    <View>
-      <View style={styles.intensityRow}>
-        {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-          <Pressable
-            key={n}
-            onPress={() => onChange(n)}
-            style={[
-              styles.intensityDot,
-              {
-                backgroundColor:
-                  n <= value
-                    ? n <= 3 ? '#16A34A' : n <= 6 ? '#F59E0B' : '#DC2626'
-                    : '#E5E7EB',
-                transform: [{ scale: n === value ? 1.3 : 1 }],
-              },
-            ]}
-          />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={onClose}>
+        <View style={styles.modalOverlay} />
+      </TouchableWithoutFeedback>
+      <View style={styles.sheet}>
+        <View style={styles.sheetHandle} />
+        <Text style={styles.sheetTitle}>Aggiorna benessere</Text>
+        {WELLNESS_ITEMS.map((it) => (
+          <View key={it.key} style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text style={{ fontWeight: '600', fontSize: 13 }}>{it.emoji} {labels[it.key]}</Text>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>{draft[it.key]}%</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 6 }}>
+              {[20, 40, 60, 80, 100].map((v) => (
+                <Pressable
+                  key={v}
+                  onPress={() => setDraft((d) => ({ ...d, [it.key]: v }))}
+                  style={[styles.wellnessChip, draft[it.key] === v && { backgroundColor: it.color }]}
+                >
+                  <Text style={{ fontSize: 12, color: draft[it.key] === v ? '#fff' : colors.muted }}>{v}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         ))}
+        <Pressable
+          onPress={() => { setWellness(draft); onClose(); }}
+          style={[styles.saveBtnSheet, { marginTop: 4 }]}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Salva</Text>
+        </Pressable>
       </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 11, color: colors.muted }}>Lieve</Text>
-        <Text style={{ fontSize: 11, color: colors.muted }}>Forte</Text>
-      </View>
-    </View>
+    </Modal>
   );
 }
 
@@ -639,146 +508,142 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 12,
   },
   backBtn: { padding: 4 },
   headerTitle: { fontSize: 18, fontWeight: '700', color: colors.ink },
   headerSub: { fontSize: 12, color: colors.muted, marginTop: 1 },
 
-  heroCard: { borderRadius: 20, padding: 20 },
-  heroLabel: { color: '#fff', marginLeft: 6, fontSize: 13, fontWeight: '600' },
-  heroScore: { fontSize: 56, fontWeight: '800', color: '#fff', lineHeight: 64 },
-  heroScoreMax: { fontSize: 20, fontWeight: '600', color: 'rgba(255,255,255,0.75)', alignSelf: 'flex-end', marginBottom: 8 },
-  heroStatusBadge: {
-    marginLeft: 12,
-    marginBottom: 8,
+  body: { flex: 1, paddingHorizontal: 16, paddingTop: 4 },
+
+  hero: { flexDirection: 'row', alignItems: 'center', borderRadius: 18, padding: 16 },
+  heroLabel: { color: '#fff', marginLeft: 5, fontSize: 12, fontWeight: '600' },
+  heroScore: { fontSize: 40, fontWeight: '800', color: '#fff', lineHeight: 44 },
+  heroMax: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.75)', marginBottom: 5 },
+  heroBadge: {
+    marginLeft: 10,
+    marginBottom: 6,
     backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 20,
-    alignSelf: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 16,
   },
-  heroStatusText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  heroStats: {
+  heroBadgeText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+  heroStats: { gap: 6 },
+
+  rowBetween: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 8,
   },
-  heroUpdate: { color: 'rgba(255,255,255,0.65)', fontSize: 11, marginTop: 10, textAlign: 'right' },
-
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.ink },
-  sectionSub: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  linkText: { color: '#0DB09E', fontWeight: '600', fontSize: 13 },
 
-  grid2: { gap: 8 },
-  quickCard: {
+  addInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: radii.md,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  quickDot: { width: 10, height: 10, borderRadius: 5 },
-
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 3,
     backgroundColor: '#0DB09E',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: radii.pill,
-    paddingVertical: 14,
-    gap: 8,
   },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  addInlineText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
-  card: {
+  emptyCard: {
+    alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: radii.lg,
-    padding: 16,
+    paddingVertical: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+  },
+  emptyText: { color: colors.muted, fontSize: 13, textAlign: 'center', marginTop: 8 },
+
+  symGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  symCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '48.5%',
+    backgroundColor: '#fff',
+    borderRadius: radii.md,
+    padding: 10,
     borderWidth: 1,
     borderColor: colors.border,
   },
+  symName: { fontWeight: '600', fontSize: 13 },
+  symStatus: { fontSize: 11, fontWeight: '600', marginTop: 1 },
+  dots: { padding: 2 },
 
-  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, height: 100 },
-  chartBarCol: { flex: 1, alignItems: 'center' },
-  chartBarBg: { flex: 1, width: '100%', justifyContent: 'flex-end', alignItems: 'center' },
-  chartBar: { width: '70%', borderRadius: 4 },
-  chartLabel: { marginTop: 6, fontSize: 10, color: colors.muted },
-  chartLegend: { flexDirection: 'row', gap: 12, marginTop: 10, justifyContent: 'center' },
-
-  insightText: { fontSize: 13, color: colors.ink, lineHeight: 20, marginBottom: 6 },
-  insightBtn: { marginTop: 8 },
-
-  wellnessRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  progressTrack: {
-    height: 8,
-    backgroundColor: '#F3F4F6',
-    borderRadius: 4,
-    marginTop: 6,
-    overflow: 'hidden',
-  },
-  progressFill: { height: 8, borderRadius: 4 },
-  wellnessChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-  saveBtnSmall: {
-    backgroundColor: '#0DB09E',
-    borderRadius: radii.md,
-    padding: 12,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  editWellnessBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-
-  historyRow: {
-    flexDirection: 'row',
+  wellnessStrip: { flexDirection: 'row', justifyContent: 'space-between', gap: 6 },
+  wellnessPill: {
+    flex: 1,
     alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: radii.md,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  wellnessVal: { fontSize: 12, fontWeight: '700', color: colors.ink, marginTop: 2 },
+
+  bottomRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+  trendBox: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: radii.lg,
     padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 8,
   },
+  miniTitle: { fontSize: 12, fontWeight: '700', color: colors.ink, marginBottom: 8 },
+  chartBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 4, height: 46 },
+  chartCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+
+  aiBox: {
+    flex: 1,
+    backgroundColor: '#EFF6FF',
+    borderRadius: radii.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  aiBoxTitle: { fontSize: 13, fontWeight: '700', color: '#1D4ED8', marginTop: 4 },
+  aiBoxText: { fontSize: 11, color: '#3B5BA5', marginTop: 4, lineHeight: 15 },
 
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 20,
     right: 20,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0DB09E',
-    paddingHorizontal: 18,
-    paddingVertical: 13,
-    borderRadius: 28,
-    gap: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 26,
+    gap: 6,
     shadowColor: '#0DB09E',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 8,
   },
-  fabText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  fabText: { color: '#fff', fontWeight: '700', fontSize: 13 },
 
-  // Modal / Bottom sheet
+  // Menu 3 puntini
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
+  menuSheet: { backgroundColor: '#fff', borderRadius: radii.lg, width: 220, overflow: 'hidden' },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 18 },
+  menuText: { fontSize: 15, fontWeight: '500', color: colors.ink },
+  menuDivider: { height: 1, backgroundColor: colors.border },
+
+  // Bottom sheet
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
-  bottomSheet: {
+  sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -786,14 +651,7 @@ const styles = StyleSheet.create({
     paddingBottom: 36,
     maxHeight: '85%',
   },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#D1D5DB',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
+  sheetHandle: { width: 40, height: 4, backgroundColor: '#D1D5DB', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   sheetTitle: { fontSize: 20, fontWeight: '700', color: colors.ink, marginBottom: 12 },
   sheetLabel: { fontSize: 13, fontWeight: '600', color: colors.muted, marginBottom: 8 },
   searchInput: {
@@ -814,13 +672,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  intensityRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingVertical: 8,
-  },
-  intensityDot: { width: 26, height: 26, borderRadius: 13 },
+  intensityRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
+  intensityDot: { width: 24, height: 24, borderRadius: 12 },
   durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   durationChip: {
     paddingHorizontal: 14,
@@ -832,6 +685,13 @@ const styles = StyleSheet.create({
   },
   durationChipActive: { backgroundColor: '#0DB09E', borderColor: '#0DB09E' },
   durationText: { fontSize: 13, fontWeight: '500', color: colors.ink },
+  wellnessChip: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+  },
   backBtnSheet: {
     flex: 1,
     borderWidth: 1,

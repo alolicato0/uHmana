@@ -1,8 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { apiGoogleAuth, apiLogin, apiRegister, type AuthUser } from '../services/auth';
 
-const TOKEN_KEY = 'uhmana_jwt';
 const ONBOARDED_KEY = 'uhmana_onboarded';
 
 interface AuthState {
@@ -26,21 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [hasOnboarded, setHasOnboarded] = useState(false);
+  // Sessione solo in memoria: nessuna persistenza, login richiesto ad ogni avvio.
+  const tokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
-      SecureStore.getItemAsync(TOKEN_KEY),
-      SecureStore.getItemAsync(ONBOARDED_KEY),
-    ]).then(async ([stored, onboarded]) => {
-      if (stored) {
-        try {
-          const payload = parseJwtPayload(stored);
-          setToken(stored);
-          setUser({ id: payload.sub, email: payload.email, name: payload.name });
-        } catch {
-          await SecureStore.deleteItemAsync(TOKEN_KEY);
-        }
-      }
+    SecureStore.getItemAsync(ONBOARDED_KEY).then((onboarded) => {
       setHasOnboarded(onboarded === '1');
       setIsLoaded(true);
     });
@@ -52,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = useCallback(async (t: string, u: AuthUser) => {
-    await SecureStore.setItemAsync(TOKEN_KEY, t);
+    tokenRef.current = t;
     setToken(t);
     setUser(u);
   }, []);
@@ -73,13 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   const signOut = useCallback(async () => {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    tokenRef.current = null;
     setToken(null);
     setUser(null);
   }, []);
 
   const getToken = useCallback(async (): Promise<string | null> => {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    return tokenRef.current;
   }, []);
 
   return (
@@ -109,13 +98,3 @@ export function useAuth() {
   return ctx;
 }
 
-function parseJwtPayload(token: string): { sub: string; email: string; name: string } {
-  const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-  const json = decodeURIComponent(
-    atob(base64)
-      .split('')
-      .map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
-      .join(''),
-  );
-  return JSON.parse(json);
-}
