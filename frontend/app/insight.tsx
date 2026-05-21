@@ -117,18 +117,29 @@ export default function InsightScreen() {
         )}
 
         {/* 4. RISCHI DA MONITORARE */}
-        {report.risks.length > 0 && (
-          <Section title="Da monitorare">
-            <View style={styles.riskBox}>
-              {report.risks.map((r, i) => (
-                <View key={i} style={styles.riskRow}>
-                  <Ionicons name="ellipse" size={7} color={colors.warning} />
+        <Section title="Da monitorare">
+          <View style={styles.riskCard}>
+            <View style={styles.riskHeader}>
+              <Text style={{ fontSize: 15 }}>⚠️</Text>
+              <Text style={styles.riskHeaderText}>
+                {report.risks.length === 0 ? 'Nessun segnale rilevato' : 'Aspetti da tenere d\'occhio'}
+              </Text>
+            </View>
+            {report.risks.length === 0 ? (
+              <View style={styles.riskOkRow}>
+                <Ionicons name="checkmark-circle-outline" size={16} color="#16A34A" />
+                <Text style={styles.riskOkText}>Tutto nella norma</Text>
+              </View>
+            ) : (
+              report.risks.map((r, i) => (
+                <View key={i} style={[styles.riskRow, i > 0 && styles.riskRowBorder]}>
+                  <View style={styles.riskDot} />
                   <Text style={styles.riskText}>{r}</Text>
                 </View>
-              ))}
-            </View>
-          </Section>
-        )}
+              ))
+            )}
+          </View>
+        </Section>
 
         {/* 5. TREND BENESSERE */}
         {report.trends.length > 0 && (
@@ -395,16 +406,29 @@ const styles = StyleSheet.create({
   insightTitle: { fontSize: 13, fontWeight: '700' },
   insightBody: { fontSize: 14, color: colors.ink, marginTop: 6, lineHeight: 20 },
 
-  riskBox: {
-    backgroundColor: '#FFFBEB',
+  riskCard: {
+    backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 14,
     borderWidth: 1,
-    borderColor: '#FDE68A',
-    gap: 8,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
-  riskRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  riskText: { fontSize: 14, color: '#92400E', textTransform: 'capitalize' },
+  riskHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  riskHeaderText: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  riskOkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 14 },
+  riskOkText: { fontSize: 14, color: '#16A34A', fontWeight: '600' },
+  riskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13 },
+  riskRowBorder: { borderTopWidth: 1, borderTopColor: '#F9FAFB' },
+  riskDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1D5DB' },
+  riskText: { fontSize: 14, color: colors.ink, textTransform: 'capitalize', flex: 1 },
 
   trendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 
