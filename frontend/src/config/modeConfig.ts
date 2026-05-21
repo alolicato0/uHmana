@@ -57,9 +57,9 @@ const human: ModeConfig = {
       route: '/insight',
     },
     {
-      icon: 'flask-outline',
-      title: 'Terapie',
-      subtitle: 'Farmaci attivi',
+      icon: 'medical-outline',
+      title: 'Piano Salute',
+      subtitle: 'Farmaci e terapie',
       color: '#5B7CFA',
       route: '/reminders',
     },

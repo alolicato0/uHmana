@@ -39,7 +39,7 @@ export default function RootLayout() {
           <Stack.Screen name="image-analysis" options={{ headerShown: true, title: 'Analisi immagine' }} />
           <Stack.Screen name="medical-record" options={{ headerShown: true, title: 'I miei dati' }} />
           <Stack.Screen name="reports" options={{ headerShown: true, title: 'Referti' }} />
-          <Stack.Screen name="reminders" options={{ headerShown: true, title: 'Promemoria' }} />
+          <Stack.Screen name="reminders" options={{ headerShown: true, title: 'Piano Salute' }} />
           <Stack.Screen name="sintomi" options={{ headerShown: false }} />
           <Stack.Screen name="insight" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: true, title: 'Impostazioni' }} />
