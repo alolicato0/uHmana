@@ -41,6 +41,7 @@ export default function RootLayout() {
           <Stack.Screen name="reports" options={{ headerShown: true, title: 'Referti' }} />
           <Stack.Screen name="reminders" options={{ headerShown: true, title: 'Promemoria' }} />
           <Stack.Screen name="sintomi" options={{ headerShown: false }} />
+          <Stack.Screen name="insight" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: true, title: 'Impostazioni' }} />
           <Stack.Screen
             name="add-event"
