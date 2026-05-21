@@ -97,7 +97,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: radii.lg,
     overflow: 'hidden',
-    minHeight: 150,
+    height: 160,
     borderWidth: 2,
     borderColor: 'transparent',
   },
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
   cardSub: { marginTop: 6, fontSize: 13, color: colors.muted, fontWeight: '500' },
   cardImage: {
     width: 140,
-    alignSelf: 'stretch',
+    height: 160,
   },
   legal: {
     marginTop: 16,

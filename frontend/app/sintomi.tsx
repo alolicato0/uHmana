@@ -48,16 +48,14 @@ const DURATION_LABELS: Record<SymptomDuration, string> = {
   longer: 'Più di 1 settimana',
 };
 
+// 'stress' rappresenta ora il livello di Relax/Calma: più alto = meglio.
 const WELLNESS_ITEMS = [
   { key: 'sleep' as const, emoji: '😴', color: '#5B7CFA' },
   { key: 'hydration' as const, emoji: '💧', color: '#0DB09E' },
   { key: 'energy' as const, emoji: '⚡', color: '#F59E0B' },
   { key: 'mood' as const, emoji: '😊', color: '#EC4899' },
-  { key: 'stress' as const, emoji: '🧠', color: '#DC2626', invert: true },
+  { key: 'stress' as const, emoji: '😌', color: '#8B5CF6' },
 ] as const;
-
-// L=Lun, M=Mar, M=Mer, G=Gio, V=Ven, S=Sab, D=Dom (getDay(): 0=Dom)
-const DAY_LABELS = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
 
 // ─── Helper puri (usabili anche fuori da React) ───────────────────────────────
 
@@ -73,42 +71,57 @@ function scoreColor(s: number): string {
 function scoreLabel(s: number): string {
   return s >= 75 ? 'Buono' : s >= 50 ? 'Attenzione' : 'Critico';
 }
-function stressLabel(v: number) {
-  return v <= 30 ? 'Basso' : v <= 60 ? 'Medio' : 'Alto';
-}
 function levelLabel(v: number) {
   return v >= 70 ? 'Alta' : v >= 40 ? 'Media' : 'Bassa';
 }
 
 function computeHealthScore(logs: SymptomLog[], wellness: DailyWellness | null): number {
-  let score = 82;
+  // Base = media delle metriche di benessere (tutte: più alto = meglio).
+  // Senza dati benessere parte da 75.
+  let base = 75;
+  if (wellness) {
+    base = (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + wellness.stress) / 5;
+  }
+  // Penalità per sintomi recenti (ultimi 3 giorni)
   const recent = logs.filter((l) => {
     const daysAgo = (Date.now() - new Date(l.date).getTime()) / 86_400_000;
     return daysAgo <= 3;
   });
+  let penalty = 0;
   if (recent.length) {
     const avg = recent.reduce((a, l) => a + l.intensity, 0) / recent.length;
-    score -= avg * 4;
+    penalty = avg * 2.5; // intensità media 10 → -25
   }
-  if (wellness) {
-    const w =
-      (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + (100 - wellness.stress)) / 5;
-    score = score * 0.55 + w * 0.45;
-  }
-  return Math.max(10, Math.min(100, Math.round(score)));
+  // Benessere ottimale (tutto 100) e nessun sintomo → 100
+  return Math.max(0, Math.min(100, Math.round(base - penalty)));
+}
+
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function computeWeekTrend(logs: SymptomLog[]): { value: number; dayLabel: string; isToday: boolean }[] {
-  const result = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    const dayLogs = logs.filter((l) => l.date.startsWith(key));
+  // Settimana fissa Lunedì → Domenica; oggi cade nella sua posizione reale.
+  const FIXED_LABELS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+  const now = new Date();
+  const todayKey = localDateKey(now);
+  const todayMonBased = (now.getDay() + 6) % 7; // Lun=0 ... Dom=6
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayMonBased);
+
+  const result: { value: number; dayLabel: string; isToday: boolean }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = localDateKey(d);
+    const dayLogs = logs.filter((l) => localDateKey(new Date(l.date)) === key);
     const avg = dayLogs.length
       ? dayLogs.reduce((a, l) => a + l.intensity, 0) / dayLogs.length
       : 0;
-    result.push({ value: avg, dayLabel: DAY_LABELS[d.getDay()], isToday: i === 0 });
+    result.push({ value: avg, dayLabel: FIXED_LABELS[i], isToday: key === todayKey });
   }
   return result;
 }
@@ -322,7 +335,7 @@ function HealthScoreCard({ score, wellness }: { score: number; wellness: DailyWe
         </View>
       </View>
       <View style={styles.heroStats}>
-        <HeroStat label="Stress" value={wellness ? stressLabel(wellness.stress) : '—'} />
+        <HeroStat label="Relax" value={wellness ? levelLabel(wellness.stress) : '—'} />
         <HeroStat label="Energia" value={wellness ? levelLabel(wellness.energy) : '—'} />
         <HeroStat label="Sonno" value={wellness ? levelLabel(wellness.sleep) : '—'} />
       </View>
@@ -727,10 +740,10 @@ function WellnessModal({
     hydration: wellness?.hydration ?? 50,
     energy: wellness?.energy ?? 70,
     mood: wellness?.mood ?? 65,
-    stress: wellness?.stress ?? 40,
+    stress: wellness?.stress ?? 60,
   });
   const labels: Record<string, string> = {
-    sleep: 'Sonno', hydration: 'Idratazione', energy: 'Energia', mood: 'Umore', stress: 'Stress',
+    sleep: 'Sonno', hydration: 'Idratazione', energy: 'Energia', mood: 'Umore', stress: 'Relax',
   };
 
   return (
