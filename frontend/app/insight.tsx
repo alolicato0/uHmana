@@ -117,27 +117,45 @@ export default function InsightScreen() {
         )}
 
         {/* 4. RISCHI DA MONITORARE */}
-        {report.risks.length > 0 && (
-          <Section title="Da monitorare">
-            <View style={styles.riskBox}>
-              {report.risks.map((r, i) => (
-                <View key={i} style={styles.riskRow}>
-                  <Ionicons name="ellipse" size={7} color={colors.warning} />
+        <Section title="Da monitorare">
+          <View style={styles.riskCard}>
+            <View style={styles.riskHeader}>
+              <Text style={{ fontSize: 15 }}>⚠️</Text>
+              <Text style={styles.riskHeaderText}>
+                {report.risks.length === 0 ? 'Nessun segnale rilevato' : 'Aspetti da tenere d\'occhio'}
+              </Text>
+            </View>
+            {report.risks.length === 0 ? (
+              <View style={styles.riskOkRow}>
+                <Ionicons name="checkmark-circle-outline" size={16} color="#16A34A" />
+                <Text style={styles.riskOkText}>Tutto nella norma</Text>
+              </View>
+            ) : (
+              report.risks.map((r, i) => (
+                <View key={i} style={[styles.riskRow, i > 0 && styles.riskRowBorder]}>
+                  <View style={styles.riskDot} />
                   <Text style={styles.riskText}>{r}</Text>
                 </View>
-              ))}
-            </View>
-          </Section>
-        )}
+              ))
+            )}
+          </View>
+        </Section>
 
         {/* 5. TREND BENESSERE */}
         {report.trends.length > 0 && (
           <Section title="Trend benessere">
             <View style={styles.trendGrid}>
-              {report.trends.map((t) => (
-                <TrendChip key={t.label} item={t} />
-              ))}
+              {report.trends
+                .filter((t) => !t.series)
+                .map((t) => (
+                  <TrendGauge key={t.label} item={t} />
+                ))}
             </View>
+            {report.trends
+              .filter((t) => t.series)
+              .map((t) => (
+                <TrendBars key={t.label} item={t} />
+              ))}
           </Section>
         )}
 
@@ -206,15 +224,79 @@ function InsightCardView({ card, index, accent }: { card: InsightCardData; index
   );
 }
 
-function TrendChip({ item }: { item: TrendItem }) {
+// Gauge a barra Apple Health style per le metriche di benessere (valore 0-100)
+function TrendGauge({ item }: { item: TrendItem }) {
+  const arrow = item.direction === 'up' ? 'arrow-up' : item.direction === 'down' ? 'arrow-down' : 'remove';
+  const fillColor = item.good ? '#16A34A' : '#F59E0B';
+  const arrowColor = item.good ? '#16A34A' : '#DC2626';
+
+  const fill = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(fill, {
+      toValue: Math.max(0, Math.min(100, item.value)),
+      duration: 700,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [fill, item.value]);
+
+  const width = fill.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
+
+  return (
+    <View style={styles.gaugeCard}>
+      <View style={styles.gaugeTop}>
+        <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+        <Text style={styles.gaugeLabel}>{item.label}</Text>
+        <Ionicons name={arrow} size={14} color={arrowColor} />
+      </View>
+      <Text style={styles.gaugeValue}>{Math.round(item.value)}</Text>
+      <View style={styles.gaugeTrack}>
+        <Animated.View style={[styles.gaugeFill, { width, backgroundColor: fillColor }]} />
+      </View>
+    </View>
+  );
+}
+
+// Mini istogramma 7 giorni Apple Health style (serie 0-100)
+function TrendBars({ item }: { item: TrendItem }) {
+  const series = item.series ?? [];
+  const max = Math.max(100, ...series);
+  const labels = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
   const arrow = item.direction === 'up' ? 'arrow-up' : item.direction === 'down' ? 'arrow-down' : 'remove';
   const arrowColor = item.good ? '#16A34A' : '#DC2626';
+
+  // L'indice del giorno corrente nella serie (oggi è l'ultimo elemento)
+  const todayIdx = series.length - 1;
+
   return (
-    <View style={styles.trendChip}>
-      <Text style={{ fontSize: 18 }}>{item.emoji}</Text>
-      <Text style={styles.trendLabel}>{item.label}</Text>
-      <View style={styles.trendArrowRow}>
+    <View style={styles.barsCard}>
+      <View style={styles.barsTop}>
+        <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
+        <Text style={styles.gaugeLabel}>{item.label}</Text>
         <Ionicons name={arrow} size={14} color={arrowColor} />
+      </View>
+      <View style={styles.barsRow}>
+        {series.map((v, i) => {
+          const h = Math.max(4, (v / max) * 56);
+          const isToday = i === todayIdx;
+          const empty = v === 0;
+          return (
+            <View key={i} style={styles.barCol}>
+              <View style={styles.barTrack}>
+                <View
+                  style={[
+                    styles.barFill,
+                    {
+                      height: h,
+                      backgroundColor: empty ? '#E5E7EB' : isToday ? '#0DB09E' : '#9FE0D6',
+                    },
+                  ]}
+                />
+              </View>
+              <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>{labels[i]}</Text>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -324,38 +406,67 @@ const styles = StyleSheet.create({
   insightTitle: { fontSize: 13, fontWeight: '700' },
   insightBody: { fontSize: 14, color: colors.ink, marginTop: 6, lineHeight: 20 },
 
-  riskBox: {
-    backgroundColor: '#FFFBEB',
+  riskCard: {
+    backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 14,
     borderWidth: 1,
-    borderColor: '#FDE68A',
-    gap: 8,
+    borderColor: colors.border,
+    overflow: 'hidden',
   },
-  riskRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  riskText: { fontSize: 14, color: '#92400E', textTransform: 'capitalize' },
-
-  trendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  trendChip: {
-    width: '48.5%',
+  riskHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  riskHeaderText: { fontSize: 13, fontWeight: '700', color: colors.ink },
+  riskOkRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 14 },
+  riskOkText: { fontSize: 14, color: '#16A34A', fontWeight: '600' },
+  riskRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13 },
+  riskRowBorder: { borderTopWidth: 1, borderTopColor: '#F9FAFB' },
+  riskDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#D1D5DB' },
+  riskText: { fontSize: 14, color: colors.ink, textTransform: 'capitalize', flex: 1 },
+
+  trendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+
+  gaugeCard: {
+    width: '48.5%',
     backgroundColor: '#fff',
     borderRadius: radii.md,
     padding: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 10,
   },
-  trendLabel: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.ink },
-  trendArrowRow: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+  gaugeTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gaugeLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.ink },
+  gaugeValue: { fontSize: 22, fontWeight: '800', color: colors.ink, marginTop: 8 },
+  gaugeTrack: {
+    height: 6,
+    borderRadius: 3,
     backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+    marginTop: 8,
+    overflow: 'hidden',
   },
+  gaugeFill: { height: 6, borderRadius: 3 },
+
+  barsCard: {
+    marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: radii.md,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  barsTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  barsRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 76 },
+  barCol: { flex: 1, alignItems: 'center', gap: 6 },
+  barTrack: { height: 56, justifyContent: 'flex-end' },
+  barFill: { width: 18, borderRadius: 5 },
+  barLabel: { fontSize: 11, color: colors.muted, fontWeight: '600' },
+  barLabelToday: { color: '#0DB09E', fontWeight: '800' },
 
   suggestBox: {
     backgroundColor: '#fff',
