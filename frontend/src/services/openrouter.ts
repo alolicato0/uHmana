@@ -37,7 +37,7 @@ export async function chat({ history, extraContext, token }: ChatRequest): Promi
   return data.reply ?? '';
 }
 
-async function toDataUrl(uri: string, mimeType: string): Promise<string> {
+export async function toDataUrl(uri: string, mimeType: string): Promise<string> {
   if (uri.startsWith('http') || uri.startsWith('data:')) return uri;
   const b64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
   return `data:${mimeType};base64,${b64}`;

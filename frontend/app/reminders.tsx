@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../src/context/AuthContext';
 import { useDoseStore } from '../src/store/doses';
+import type { DoseAction } from '../src/store/doses';
 import { useRemindersStore } from '../src/store/reminders';
 import { colors, radii } from '../src/theme';
 import type { Reminder } from '../src/types';
@@ -68,8 +69,25 @@ function buildAIInsight(
   return null;
 }
 
+function calcTimes(firstTime: string, freq: '8h' | '12h' | '24h'): string[] {
+  const [h, m] = firstTime.split(':').map(Number);
+  const interval = freq === '8h' ? 8 : freq === '12h' ? 12 : 24;
+  const count = 24 / interval;
+  return Array.from({ length: count }, (_, i) => {
+    const totalMins = (h * 60 + m + i * interval * 60) % (24 * 60);
+    const th = Math.floor(totalMins / 60);
+    const tm = totalMins % 60;
+    return `${String(th).padStart(2, '0')}:${String(tm).padStart(2, '0')}`;
+  });
+}
+
 const SLOT_LABELS = { morning: '🌅 Mattina', afternoon: '☀️ Pomeriggio', evening: '🌙 Sera' } as const;
 const MED_COLORS = ['#0DB09E', '#8B5CF6', '#F59E0B', '#3B82F6', '#EC4899', '#EF4444'];
+const FREQ_OPTIONS: { value: '8h' | '12h' | '24h'; label: string; sublabel: string }[] = [
+  { value: '24h', label: '1x/giorno', sublabel: 'ogni 24h' },
+  { value: '12h', label: '2x/giorno', sublabel: 'ogni 12h' },
+  { value: '8h', label: '3x/giorno', sublabel: 'ogni 8h' },
+];
 
 function CheckAnim({ onDone }: { onDone: () => void }) {
   const scale = useRef(new Animated.Value(0)).current;
@@ -94,6 +112,15 @@ function CheckAnim({ onDone }: { onDone: () => void }) {
   );
 }
 
+type FormState = {
+  name: string;
+  dose: string;
+  time: string;
+  frequency: '8h' | '12h' | '24h';
+  days: string;
+  notes: string;
+};
+
 export default function PianoSaluteScreen() {
   const { getToken } = useAuth();
   const reminders = useRemindersStore((s) => s.reminders);
@@ -104,7 +131,10 @@ export default function PianoSaluteScreen() {
   const getWeekAdherence = useDoseStore((s) => s.getWeekAdherence);
 
   const [addOpen, setAddOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', dose: '', time: '08:00', days: '7', notes: '' });
+  const [form, setForm] = useState<FormState>({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '' });
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickH, setPickH] = useState(8);
+  const [pickM, setPickM] = useState(0);
   const [intDismissed, setIntDismissed] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
   const adherenceAnim = useRef(new Animated.Value(0)).current;
@@ -142,13 +172,24 @@ export default function PianoSaluteScreen() {
       .sort((a, b) => (a.schedule.time! > b.schedule.time! ? 1 : -1))
       .find((r) => r.schedule.time! >= nowTime) ?? medications[0];
 
+  // Group medications by unique title for the "Farmaci attivi" card
+  const uniqueTitles = [...new Set(medications.map((r) => r.title))];
+  const medGroups = uniqueTitles.map((title) => ({
+    title,
+    times: medications
+      .filter((r) => r.title === title && r.schedule.time)
+      .map((r) => r.schedule.time!)
+      .sort(),
+    reminders: medications.filter((r) => r.title === title),
+  }));
+
   const slotGroups = {
     morning: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'morning'),
     afternoon: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'afternoon'),
     evening: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'evening'),
   };
 
-  const handleDose = (rid: string, action: 'taken' | 'skipped' | 'postponed', time: string) => {
+  const handleDose = (rid: string, action: DoseAction, time: string) => {
     logDose({ reminderId: rid, date: today, timeSlot: time, action });
     if (action === 'taken') {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -158,27 +199,54 @@ export default function PianoSaluteScreen() {
     }
   };
 
+  const cycleTimelineDose = (rid: string, time: string, current: DoseAction | undefined) => {
+    const next: DoseAction = !current || current === 'postponed' ? 'taken' : current === 'taken' ? 'skipped' : 'postponed';
+    handleDose(rid, next, time);
+  };
+
+  const openTimePicker = () => {
+    const [h, m] = form.time.split(':').map(Number);
+    setPickH(h);
+    setPickM(m);
+    setShowTimePicker(true);
+  };
+
+  const confirmTimePicker = () => {
+    const t = `${String(pickH).padStart(2, '0')}:${String(pickM).padStart(2, '0')}`;
+    setForm((f) => ({ ...f, time: t }));
+    setShowTimePicker(false);
+  };
+
+  const previewTimes = calcTimes(form.time, form.frequency);
+
   const handleAdd = async () => {
     if (!form.name.trim()) return;
-    await addReminder(
-      {
-        category: 'medication',
-        title: `${form.name.trim()}${form.dose ? ' ' + form.dose.trim() : ''}`,
-        notes: form.notes,
-        schedule: { kind: 'daily', time: form.time },
-        enabled: true,
-      },
-      getToken,
-    );
+    const title = `${form.name.trim()}${form.dose ? ' ' + form.dose.trim() : ''}`;
+    const freqLabel = form.frequency === '8h' ? 'ogni 8h' : form.frequency === '12h' ? 'ogni 12h' : 'ogni 24h';
+    const times = calcTimes(form.time, form.frequency);
+    for (const t of times) {
+      await addReminder(
+        {
+          category: 'medication',
+          title,
+          notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
+          schedule: { kind: 'daily', time: t },
+          enabled: true,
+        },
+        getToken,
+      );
+    }
     setAddOpen(false);
-    setForm({ name: '', dose: '', time: '08:00', days: '7', notes: '' });
+    setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '' });
   };
+
+  const upcomingRec = upcoming ? todayRecs.find((x) => x.reminderId === upcoming.id) : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['bottom']}>
       {showCheck && <CheckAnim onDone={() => setShowCheck(false)} />}
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
         {/* Drug interaction warning */}
         {interactions.length > 0 && !intDismissed && (
           <View style={styles.interactionBox}>
@@ -198,24 +266,40 @@ export default function PianoSaluteScreen() {
         {/* 1. Hero — prossima dose */}
         {upcoming ? (
           <LinearGradient colors={['#0DB09E', '#5B7CFA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
+            {upcomingRec && (
+              <View style={styles.heroStateBadge}>
+                <Text style={styles.heroStateTxt}>
+                  {upcomingRec.action === 'taken' ? '✓ Presa' : upcomingRec.action === 'skipped' ? '✗ Saltata' : '⏱ Rimandata'}
+                </Text>
+              </View>
+            )}
             <Text style={styles.heroLabel}>💊 Terapia in corso</Text>
             <Text style={styles.heroMed}>{upcoming.title}</Text>
             <View style={styles.heroInfoRow}>
               <View style={styles.heroInfoPill}>
                 <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.heroInfoText}>Prossima dose: oggi {upcoming.schedule.time ?? '--:--'}</Text>
+                <Text style={styles.heroInfoText}>Prossima dose: {upcoming.schedule.time ?? '--:--'}</Text>
               </View>
             </View>
             <View style={styles.heroBtnRow}>
-              <Pressable style={[styles.heroBtn, styles.heroBtnTaken]} onPress={() => handleDose(upcoming.id, 'taken', upcoming.schedule.time ?? '')}>
-                <Ionicons name="checkmark" size={14} color="#0DB09E" />
-                <Text style={[styles.heroBtnTxt, { color: '#0DB09E' }]}>Presa</Text>
+              <Pressable
+                style={[styles.heroBtn, styles.heroBtnTaken, upcomingRec?.action === 'taken' && styles.heroBtnActive]}
+                onPress={() => handleDose(upcoming.id, 'taken', upcoming.schedule.time ?? '')}
+              >
+                <Ionicons name="checkmark" size={14} color={upcomingRec?.action === 'taken' ? '#fff' : '#0DB09E'} />
+                <Text style={[styles.heroBtnTxt, { color: upcomingRec?.action === 'taken' ? '#fff' : '#0DB09E' }]}>Presa</Text>
               </Pressable>
-              <Pressable style={[styles.heroBtn, styles.heroBtnOutline]} onPress={() => handleDose(upcoming.id, 'skipped', upcoming.schedule.time ?? '')}>
+              <Pressable
+                style={[styles.heroBtn, styles.heroBtnOutline, upcomingRec?.action === 'skipped' && styles.heroBtnActiveOutline]}
+                onPress={() => handleDose(upcoming.id, 'skipped', upcoming.schedule.time ?? '')}
+              >
                 <Ionicons name="close" size={14} color="rgba(255,255,255,0.9)" />
                 <Text style={[styles.heroBtnTxt, { color: 'rgba(255,255,255,0.9)' }]}>Salta</Text>
               </Pressable>
-              <Pressable style={[styles.heroBtn, styles.heroBtnOutline]} onPress={() => handleDose(upcoming.id, 'postponed', upcoming.schedule.time ?? '')}>
+              <Pressable
+                style={[styles.heroBtn, styles.heroBtnOutline, upcomingRec?.action === 'postponed' && styles.heroBtnActiveOutline]}
+                onPress={() => handleDose(upcoming.id, 'postponed', upcoming.schedule.time ?? '')}
+              >
                 <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.9)" />
                 <Text style={[styles.heroBtnTxt, { color: 'rgba(255,255,255,0.9)' }]}>Rimanda</Text>
               </Pressable>
@@ -223,53 +307,52 @@ export default function PianoSaluteScreen() {
           </LinearGradient>
         ) : (
           <View style={styles.heroEmpty}>
-            <Text style={{ fontSize: 36 }}>✅</Text>
+            <Text style={{ fontSize: 32 }}>✅</Text>
             <Text style={styles.heroEmptyTitle}>Nessuna dose in attesa</Text>
             <Text style={styles.heroEmptySubtitle}>Hai completato tutti i farmaci previsti.</Text>
           </View>
         )}
 
-        {/* 4. Aderenza */}
+        {/* Adherence */}
         {medications.length > 0 && (
           <View style={styles.adherenceCard}>
             <View style={styles.adherenceTop}>
-              <Text style={{ fontSize: 18 }}>📈</Text>
-              <Text style={styles.adherenceLabel}>Aderenza</Text>
+              <Text style={{ fontSize: 16 }}>📈</Text>
+              <Text style={styles.adherenceLabel}>Aderenza settimanale</Text>
               <Text style={[styles.adherencePct, { color: adherenceColor }]}>{adherence}%</Text>
             </View>
-            <Text style={styles.adherenceSub}>terapie seguite questa settimana</Text>
             <View style={styles.adherenceTrack}>
               <Animated.View style={[styles.adherenceFill, { width: adherenceWidth, backgroundColor: adherenceColor }]} />
             </View>
           </View>
         )}
 
-        {/* 2. Farmaci attivi */}
-        {medications.length > 0 && (
-          <View style={{ marginTop: 22 }}>
+        {/* Farmaci attivi */}
+        {medGroups.length > 0 && (
+          <View style={{ marginTop: 14 }}>
             <Text style={styles.sectionTitle}>Farmaci attivi</Text>
-            <View style={{ height: 10 }} />
-            {medications.map((r, idx) => {
+            <View style={{ height: 8 }} />
+            {medGroups.map((group, idx) => {
               const color = MED_COLORS[idx % MED_COLORS.length];
-              const rec = todayRecs.find((x) => x.reminderId === r.id);
+              const todayRecForGroup = todayRecs.find((x) => group.reminders.some((r) => r.id === x.reminderId));
               return (
-                <View key={r.id} style={styles.medCard}>
+                <View key={group.title} style={styles.medCard}>
                   <View style={[styles.medDot, { backgroundColor: color }]} />
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.medName}>{r.title}</Text>
+                    <Text style={styles.medName}>{group.title}</Text>
                     <Text style={styles.medMeta}>
-                      {r.schedule.kind === 'daily' ? 'Ogni giorno' : r.schedule.kind}
-                      {r.schedule.time ? ` · ${r.schedule.time}` : ''}
+                      {group.times.length > 1 ? `${group.times.length}x/giorno · ` : 'Ogni giorno · '}
+                      {group.times.join(', ')}
                     </Text>
                   </View>
-                  {rec && (
+                  {todayRecForGroup && (
                     <View style={[styles.medBadge, {
-                      backgroundColor: rec.action === 'taken' ? '#DCFCE7' : rec.action === 'skipped' ? '#FEE2E2' : '#FEF9C3',
+                      backgroundColor: todayRecForGroup.action === 'taken' ? '#DCFCE7' : todayRecForGroup.action === 'skipped' ? '#FEE2E2' : '#FEF9C3',
                     }]}>
                       <Text style={[styles.medBadgeTxt, {
-                        color: rec.action === 'taken' ? '#16A34A' : rec.action === 'skipped' ? '#DC2626' : '#CA8A04',
+                        color: todayRecForGroup.action === 'taken' ? '#16A34A' : todayRecForGroup.action === 'skipped' ? '#DC2626' : '#CA8A04',
                       }]}>
-                        {rec.action === 'taken' ? 'Presa ✓' : rec.action === 'skipped' ? 'Saltata' : 'Rimandata'}
+                        {todayRecForGroup.action === 'taken' ? 'Presa ✓' : todayRecForGroup.action === 'skipped' ? 'Saltata' : 'Rimandata'}
                       </Text>
                     </View>
                   )}
@@ -279,9 +362,9 @@ export default function PianoSaluteScreen() {
           </View>
         )}
 
-        {/* 3. Timeline giornaliera */}
+        {/* Timeline giornaliera */}
         {medications.length > 0 && (
-          <View style={{ marginTop: 22 }}>
+          <View style={{ marginTop: 14 }}>
             <Text style={styles.sectionTitle}>Oggi</Text>
             <View style={styles.timelineCard}>
               {(['morning', 'afternoon', 'evening'] as const).map((slot) => {
@@ -297,7 +380,10 @@ export default function PianoSaluteScreen() {
                           <Text style={styles.timelineTime}>{r.schedule.time}</Text>
                           <View style={styles.timelineDot} />
                           <Text style={styles.timelineName}>{r.title}</Text>
-                          <Pressable onPress={() => !rec && handleDose(r.id, 'taken', r.schedule.time ?? '')} hitSlop={8}>
+                          <Pressable
+                            onPress={() => cycleTimelineDose(r.id, r.schedule.time ?? '', rec?.action)}
+                            hitSlop={8}
+                          >
                             <Ionicons
                               name={!rec ? 'ellipse-outline' : rec.action === 'taken' ? 'checkmark-circle' : rec.action === 'skipped' ? 'close-circle' : 'time'}
                               size={24}
@@ -314,22 +400,18 @@ export default function PianoSaluteScreen() {
           </View>
         )}
 
-        {/* 5. AI Insight */}
+        {/* AI Insight */}
         {aiInsight && (
-          <View style={{ marginTop: 22 }}>
-            <Text style={styles.sectionTitle}>Insight AI</Text>
-            <View style={{ height: 10 }} />
-            <View style={styles.insightBox}>
-              <Text style={{ fontSize: 22 }}>🧠</Text>
-              <Text style={styles.insightText}>{aiInsight}</Text>
-            </View>
+          <View style={styles.insightBox}>
+            <Text style={{ fontSize: 20 }}>🧠</Text>
+            <Text style={styles.insightText}>{aiInsight}</Text>
           </View>
         )}
 
         {/* Empty state */}
         {medications.length === 0 && (
           <View style={styles.emptyBox}>
-            <Text style={{ fontSize: 44 }}>💊</Text>
+            <Text style={{ fontSize: 40 }}>💊</Text>
             <Text style={styles.emptyTitle}>Nessun farmaco attivo</Text>
             <Text style={styles.emptyText}>
               Aggiungi il tuo primo farmaco per iniziare a tracciare terapie e dosi quotidiane.
@@ -343,6 +425,39 @@ export default function PianoSaluteScreen() {
         <Ionicons name="add" size={22} color="#fff" />
         <Text style={styles.fabTxt}>Aggiungi farmaco</Text>
       </Pressable>
+
+      {/* Time picker modal */}
+      <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
+        <Pressable style={styles.timePickerBackdrop} onPress={() => setShowTimePicker(false)}>
+          <Pressable style={styles.timePickerCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.timePickerTitle}>Scegli orario</Text>
+            <View style={styles.timePickerRow}>
+              <View style={styles.timePickerCol}>
+                <Pressable onPress={() => setPickH((h) => (h + 1) % 24)} hitSlop={10}>
+                  <Ionicons name="chevron-up" size={30} color={colors.primary} />
+                </Pressable>
+                <Text style={styles.timePickerNum}>{String(pickH).padStart(2, '0')}</Text>
+                <Pressable onPress={() => setPickH((h) => (h - 1 + 24) % 24)} hitSlop={10}>
+                  <Ionicons name="chevron-down" size={30} color={colors.primary} />
+                </Pressable>
+              </View>
+              <Text style={styles.timePickerColon}>:</Text>
+              <View style={styles.timePickerCol}>
+                <Pressable onPress={() => setPickM((m) => (m + 5) % 60)} hitSlop={10}>
+                  <Ionicons name="chevron-up" size={30} color={colors.primary} />
+                </Pressable>
+                <Text style={styles.timePickerNum}>{String(pickM).padStart(2, '0')}</Text>
+                <Pressable onPress={() => setPickM((m) => (m - 5 + 60) % 60)} hitSlop={10}>
+                  <Ionicons name="chevron-down" size={30} color={colors.primary} />
+                </Pressable>
+              </View>
+            </View>
+            <Pressable style={styles.timePickerBtn} onPress={confirmTimePicker}>
+              <Text style={styles.timePickerBtnTxt}>Conferma</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Add medication modal */}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
@@ -360,21 +475,49 @@ export default function PianoSaluteScreen() {
             <TextInput style={styles.input} placeholder="Es: 400mg" value={form.dose}
               onChangeText={(v) => setForm((f) => ({ ...f, dose: v }))} />
 
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Orario</Text>
-                <TextInput style={styles.input} placeholder="08:00" value={form.time}
-                  onChangeText={(v) => setForm((f) => ({ ...f, time: v }))} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.fieldLabel}>Durata (giorni)</Text>
-                <TextInput style={styles.input} placeholder="7" keyboardType="numeric" value={form.days}
-                  onChangeText={(v) => setForm((f) => ({ ...f, days: v }))} />
-              </View>
+            {/* Frequenza */}
+            <Text style={styles.fieldLabel}>Frequenza</Text>
+            <View style={styles.freqRow}>
+              {FREQ_OPTIONS.map((opt) => (
+                <Pressable
+                  key={opt.value}
+                  style={[styles.freqChip, form.frequency === opt.value && styles.freqChipActive]}
+                  onPress={() => setForm((f) => ({ ...f, frequency: opt.value }))}
+                >
+                  <Text style={[styles.freqChipLabel, form.frequency === opt.value && styles.freqChipLabelActive]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.freqChipSub, form.frequency === opt.value && styles.freqChipSubActive]}>
+                    {opt.sublabel}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
 
+            {/* Orario — clock popup */}
+            <Text style={styles.fieldLabel}>Primo orario</Text>
+            <Pressable style={styles.timeBtn} onPress={openTimePicker}>
+              <Ionicons name="time-outline" size={18} color={colors.primary} />
+              <Text style={styles.timeBtnTxt}>{form.time}</Text>
+              <Ionicons name="chevron-down" size={16} color={colors.muted} style={{ marginLeft: 'auto' }} />
+            </Pressable>
+
+            {/* Preview times */}
+            {previewTimes.length > 1 && (
+              <View style={styles.previewBox}>
+                <Text style={styles.previewLabel}>Orari calcolati automaticamente:</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                  {previewTimes.map((t) => (
+                    <View key={t} style={styles.previewPill}>
+                      <Text style={styles.previewPillTxt}>{t}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
             <Text style={styles.fieldLabel}>Note</Text>
-            <TextInput style={[styles.input, { height: 72 }]} placeholder="Note aggiuntive..."
+            <TextInput style={[styles.input, { height: 64 }]} placeholder="Note aggiuntive..."
               multiline value={form.notes} onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))} />
 
             <Pressable style={[styles.sheetBtn, !form.name.trim() && { opacity: 0.45 }]}
@@ -392,87 +535,97 @@ const styles = StyleSheet.create({
   interactionBox: {
     backgroundColor: '#FFFBEB',
     borderRadius: radii.md,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#FDE68A',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  interactionTitle: { fontSize: 14, fontWeight: '700', color: '#92400E', flex: 1 },
-  interactionText: { fontSize: 13, color: '#92400E', marginTop: 3, lineHeight: 18 },
+  interactionTitle: { fontSize: 13, fontWeight: '700', color: '#92400E', flex: 1 },
+  interactionText: { fontSize: 12, color: '#92400E', marginTop: 3, lineHeight: 17 },
 
   hero: {
-    borderRadius: 22,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
     shadowColor: '#0DB09E',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
-    shadowRadius: 14,
-    elevation: 6,
+    shadowRadius: 12,
+    elevation: 5,
   },
-  heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontWeight: '600' },
-  heroMed: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 6 },
-  heroInfoRow: { flexDirection: 'row', marginTop: 12 },
+  heroStateBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginBottom: 8,
+  },
+  heroStateTxt: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  heroLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
+  heroMed: { color: '#fff', fontSize: 20, fontWeight: '800', marginTop: 4 },
+  heroInfoRow: { flexDirection: 'row', marginTop: 8 },
   heroInfoPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     backgroundColor: 'rgba(255,255,255,0.18)',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: 20,
   },
   heroInfoText: { color: 'rgba(255,255,255,0.9)', fontSize: 12 },
-  heroBtnRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  heroBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14, gap: 5 },
+  heroBtnRow: { flexDirection: 'row', gap: 6, marginTop: 12 },
+  heroBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 12, gap: 4 },
   heroBtnTaken: { backgroundColor: '#fff' },
-  heroBtnOutline: { backgroundColor: 'rgba(255,255,255,0.2)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
-  heroBtnTxt: { fontSize: 13, fontWeight: '700' },
+  heroBtnOutline: { backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
+  heroBtnActive: { backgroundColor: '#0DB09E' },
+  heroBtnActiveOutline: { backgroundColor: 'rgba(255,255,255,0.35)', borderColor: 'rgba(255,255,255,0.8)' },
+  heroBtnTxt: { fontSize: 12, fontWeight: '700' },
 
   heroEmpty: {
     backgroundColor: '#fff',
-    borderRadius: 22,
-    padding: 28,
+    borderRadius: 20,
+    padding: 22,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 8,
+    gap: 6,
   },
-  heroEmptyTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginTop: 4 },
-  heroEmptySubtitle: { fontSize: 13, color: colors.muted, textAlign: 'center' },
+  heroEmptyTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, marginTop: 4 },
+  heroEmptySubtitle: { fontSize: 12, color: colors.muted, textAlign: 'center' },
 
   adherenceCard: {
-    marginTop: 12,
+    marginTop: 8,
     backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 16,
+    padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  adherenceTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  adherenceLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.ink },
-  adherencePct: { fontSize: 20, fontWeight: '800' },
-  adherenceSub: { fontSize: 12, color: colors.muted, marginTop: 2, marginBottom: 10 },
-  adherenceTrack: { height: 8, borderRadius: 4, backgroundColor: '#F3F4F6', overflow: 'hidden' },
-  adherenceFill: { height: 8, borderRadius: 4 },
+  adherenceTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  adherenceLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.ink },
+  adherencePct: { fontSize: 18, fontWeight: '800' },
+  adherenceTrack: { height: 7, borderRadius: 4, backgroundColor: '#F3F4F6', overflow: 'hidden' },
+  adherenceFill: { height: 7, borderRadius: 4 },
 
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: colors.ink },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.ink },
 
   medCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 14,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 12,
+    gap: 10,
   },
-  medDot: { width: 10, height: 10, borderRadius: 5 },
-  medName: { fontSize: 15, fontWeight: '700', color: colors.ink },
-  medMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
-  medBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
-  medBadgeTxt: { fontSize: 12, fontWeight: '700' },
+  medDot: { width: 9, height: 9, borderRadius: 5 },
+  medName: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  medMeta: { fontSize: 11, color: colors.muted, marginTop: 2 },
+  medBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  medBadgeTxt: { fontSize: 11, fontWeight: '700' },
 
   timelineCard: {
     backgroundColor: '#fff',
@@ -480,47 +633,48 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
-    marginTop: 10,
+    marginTop: 8,
   },
-  timelineSlot: { paddingHorizontal: 14 },
+  timelineSlot: { paddingHorizontal: 12 },
   timelineSlotLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.muted,
-    paddingTop: 12,
-    paddingBottom: 6,
+    paddingTop: 10,
+    paddingBottom: 4,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
   timelineRowBorder: { borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
-  timelineTime: { fontSize: 13, fontWeight: '700', color: colors.muted, width: 46 },
-  timelineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary },
-  timelineName: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.ink },
+  timelineTime: { fontSize: 12, fontWeight: '700', color: colors.muted, width: 42 },
+  timelineDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.primary },
+  timelineName: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.ink },
 
   insightBox: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 16,
+    padding: 13,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: 'flex-start',
+    marginTop: 12,
   },
-  insightText: { flex: 1, fontSize: 14, color: colors.ink, lineHeight: 20 },
+  insightText: { flex: 1, fontSize: 13, color: colors.ink, lineHeight: 19 },
 
   emptyBox: {
-    marginTop: 24,
+    marginTop: 20,
     backgroundColor: '#fff',
     borderRadius: radii.lg,
-    padding: 28,
+    padding: 24,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    gap: 8,
+    gap: 6,
   },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.ink, marginTop: 4 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: colors.ink, marginTop: 4 },
   emptyText: { fontSize: 13, color: colors.muted, textAlign: 'center', lineHeight: 19 },
 
   fab: {
@@ -529,8 +683,8 @@ const styles = StyleSheet.create({
     bottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
     borderRadius: radii.pill,
     backgroundColor: colors.primary,
     shadowColor: colors.primary,
@@ -541,33 +695,105 @@ const styles = StyleSheet.create({
   },
   fabTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
+  // Time picker
+  timePickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  timePickerCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.lg,
+    padding: 28,
+    width: '100%',
+    alignItems: 'center',
+  },
+  timePickerTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginBottom: 24 },
+  timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  timePickerCol: { alignItems: 'center', gap: 12 },
+  timePickerNum: { fontSize: 48, fontWeight: '800', color: colors.ink, width: 72, textAlign: 'center' },
+  timePickerColon: { fontSize: 40, fontWeight: '800', color: colors.muted, marginTop: -8 },
+  timePickerBtn: {
+    marginTop: 28,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: 13,
+    paddingHorizontal: 40,
+  },
+  timePickerBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 16 },
+
+  // Add form
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
   sheet: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 24,
-    paddingBottom: 40,
+    padding: 22,
+    paddingBottom: 36,
   },
-  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 18 },
-  sheetTitle: { fontSize: 20, fontWeight: '800', color: colors.ink, marginBottom: 18 },
-  fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.muted, marginBottom: 6, marginTop: 12 },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 16 },
+  sheetTitle: { fontSize: 19, fontWeight: '800', color: colors.ink, marginBottom: 14 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: colors.muted, marginBottom: 5, marginTop: 10 },
   input: {
     backgroundColor: '#F5F7FA',
     borderRadius: radii.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    fontSize: 14,
     color: colors.ink,
   },
-  sheetBtn: {
-    marginTop: 22,
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
-    paddingVertical: 15,
+
+  freqRow: { flexDirection: 'row', gap: 8 },
+  freqChip: {
+    flex: 1,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: '#F5F7FA',
+    paddingVertical: 10,
     alignItems: 'center',
   },
-  sheetBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  freqChipActive: { borderColor: colors.primary, backgroundColor: '#E6FAF8' },
+  freqChipLabel: { fontSize: 13, fontWeight: '700', color: colors.muted },
+  freqChipLabelActive: { color: colors.primary },
+  freqChipSub: { fontSize: 10, color: colors.muted, marginTop: 2 },
+  freqChipSubActive: { color: colors.primary },
+
+  timeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F5F7FA',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  timeBtnTxt: { fontSize: 18, fontWeight: '800', color: colors.ink },
+
+  previewBox: {
+    marginTop: 8,
+    backgroundColor: '#F0FDF4',
+    borderRadius: radii.sm,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  previewLabel: { fontSize: 11, fontWeight: '600', color: '#16A34A' },
+  previewPill: { backgroundColor: '#DCFCE7', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 },
+  previewPillTxt: { fontSize: 13, fontWeight: '700', color: '#16A34A' },
+
+  sheetBtn: {
+    marginTop: 18,
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  sheetBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
