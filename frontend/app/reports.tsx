@@ -15,6 +15,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../src/context/AuthContext';
+import { chat, toDataUrl } from '../src/services/openrouter';
 import { type ReportDoc, type ReportValue, useReportsLocalStore } from '../src/store/reportsLocal';
 import { colors, radii } from '../src/theme';
 
@@ -149,7 +151,45 @@ function computeTrends(docs: ReportDoc[]): { label: string; dir: '↑' | '↓' |
   return trends.slice(0, 4);
 }
 
+const AI_ANALYSIS_PROMPT = `Sei un assistente medico AI. Analizza il documento allegato (referto, esame o visita medica) e rispondi ESCLUSIVAMENTE con un JSON valido, senza testo aggiuntivo, con questa struttura:
+{
+  "category": "Analisi del sangue" | "Radiologia" | "Esami strumentali" | "Visite specialistiche",
+  "summary": "Riassunto in italiano semplice, 1-2 frasi, comprensibile a tutti",
+  "bullets": ["punto chiave 1", "punto chiave 2", "punto chiave 3"],
+  "values": [
+    {"label": "Nome valore", "value": "numero o testo", "unit": "unità di misura", "status": "ok" | "warning" | "critical"}
+  ]
+}
+Regole: usa "warning" se il valore è fuori range ma non critico, "critical" se richiede attenzione urgente. Se non ci sono valori numerici, lascia "values" come array vuoto. Rispondi SOLO con il JSON.`;
+
+function parseAiResponse(raw: string): { summary: string; bullets: string[]; values: ReportValue[]; category: string } | null {
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    if (!parsed.summary || !Array.isArray(parsed.bullets)) return null;
+    return {
+      summary: String(parsed.summary),
+      bullets: (parsed.bullets as unknown[]).map(String).slice(0, 5),
+      values: Array.isArray(parsed.values)
+        ? (parsed.values as { label?: unknown; value?: unknown; unit?: unknown; status?: unknown }[])
+            .filter((v) => v.label && v.value)
+            .map((v) => ({
+              label: String(v.label),
+              value: String(v.value),
+              unit: String(v.unit ?? ''),
+              status: (['ok', 'warning', 'critical'].includes(String(v.status)) ? v.status : 'ok') as ReportValue['status'],
+            }))
+        : [],
+      category: String(parsed.category ?? ''),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function ReportsScreen() {
+  const { getToken } = useAuth();
   const docs = useReportsLocalStore((s) => s.docs);
   const addDoc = useReportsLocalStore((s) => s.add);
   const removeDoc = useReportsLocalStore((s) => s.remove);
@@ -212,30 +252,78 @@ export default function ReportsScreen() {
   };
 
   const runAiAnalysis = async (name: string, type: 'pdf' | 'image', uri: string) => {
-    const cat = detectCategory(name);
-    const catDocs = docsInCategory(cat);
-    if (catDocs.length >= MAX_PER_CATEGORY) {
-      Alert.alert(
-        'Cartella piena',
-        `La cartella "${cat}" ha raggiunto il limite di ${MAX_PER_CATEGORY} documenti. Elimina un documento esistente per aggiungerne uno nuovo.`,
-      );
-      return;
-    }
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setUploading(true);
-    await new Promise((res) => setTimeout(res, 2200));
-    const analysis = generateAiAnalysis(name);
-    addDoc({
-      name,
-      type,
-      category: cat,
-      date: todayKey(),
-      aiSummary: analysis.summary,
-      aiBullets: analysis.bullets,
-      values: analysis.values,
-      fileUri: uri,
-    });
-    setUploading(false);
+    try {
+      const mimeType = type === 'pdf' ? 'application/pdf' : 'image/jpeg';
+      const dataUrl = await toDataUrl(uri, mimeType);
+      const token = await getToken();
+
+      const raw = await chat({
+        token,
+        history: [
+          {
+            id: 'sys',
+            role: 'system',
+            text: 'Sei un assistente medico AI che analizza documenti sanitari.',
+            createdAt: new Date().toISOString(),
+          },
+          {
+            id: 'user',
+            role: 'user',
+            text: AI_ANALYSIS_PROMPT,
+            attachments: [{ url: uri, mimeType, dataUrl }],
+            createdAt: new Date().toISOString(),
+          },
+        ],
+      });
+
+      const parsed = parseAiResponse(raw);
+      const fallback = generateAiAnalysis(name);
+      const analysis = parsed ?? fallback;
+
+      // Category from AI if valid, else filename heuristic
+      const validCategories = CATEGORIES.map((c) => c.key);
+      const aiCat = parsed?.category ?? '';
+      const cat = validCategories.includes(aiCat) ? aiCat : detectCategory(name);
+
+      const catDocs = docsInCategory(cat);
+      if (catDocs.length >= MAX_PER_CATEGORY) {
+        Alert.alert(
+          'Cartella piena',
+          `La cartella "${cat}" ha raggiunto il limite di ${MAX_PER_CATEGORY} documenti. Elimina un documento esistente per aggiungerne uno nuovo.`,
+        );
+        setUploading(false);
+        return;
+      }
+
+      addDoc({
+        name,
+        type,
+        category: cat,
+        date: todayKey(),
+        aiSummary: analysis.summary,
+        aiBullets: analysis.bullets,
+        values: analysis.values,
+        fileUri: uri,
+      });
+    } catch {
+      // Backend non raggiungibile: fallback client-side
+      const fallback = generateAiAnalysis(name);
+      const cat = detectCategory(name);
+      addDoc({
+        name,
+        type,
+        category: cat,
+        date: todayKey(),
+        aiSummary: fallback.summary,
+        aiBullets: fallback.bullets,
+        values: fallback.values,
+        fileUri: uri,
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const activeCategoryDocs = activeCategory ? docsInCategory(activeCategory) : [];
