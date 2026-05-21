@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   buildInsightReport,
@@ -11,7 +11,7 @@ import {
   type TrendItem,
 } from '../src/services/insightEngine';
 import { useRemindersStore } from '../src/store/reminders';
-import { useSymptomsStore } from '../src/store/symptoms';
+import { useSymptomsStore, type SymptomLog } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
 
 const STATUS_GRADIENT: Record<InsightStatus, [string, string]> = {
@@ -142,22 +142,16 @@ export default function InsightScreen() {
         </Section>
 
         {/* 5. TREND BENESSERE */}
-        {report.trends.length > 0 && (
-          <Section title="Trend benessere">
+        <Section title="Trend benessere">
+          {report.trends.length > 0 && (
             <View style={styles.trendGrid}>
-              {report.trends
-                .filter((t) => !t.series)
-                .map((t) => (
-                  <TrendGauge key={t.label} item={t} />
-                ))}
-            </View>
-            {report.trends
-              .filter((t) => t.series)
-              .map((t) => (
-                <TrendBars key={t.label} item={t} />
+              {report.trends.map((t) => (
+                <TrendGauge key={t.label} item={t} />
               ))}
-          </Section>
-        )}
+            </View>
+          )}
+          <SymptomCalendar logs={logs} />
+        </Section>
 
         {/* 6. SUGGERIMENTI AI */}
         <Section title="Suggerimenti">
@@ -257,47 +251,135 @@ function TrendGauge({ item }: { item: TrendItem }) {
   );
 }
 
-// Mini istogramma 7 giorni Apple Health style (serie 0-100)
-function TrendBars({ item }: { item: TrendItem }) {
-  const series = item.series ?? [];
-  const max = Math.max(100, ...series);
-  const labels = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
-  const arrow = item.direction === 'up' ? 'arrow-up' : item.direction === 'down' ? 'arrow-down' : 'remove';
-  const arrowColor = item.good ? '#16A34A' : '#DC2626';
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
-  // L'indice del giorno corrente nella serie (oggi è l'ultimo elemento)
-  const todayIdx = series.length - 1;
+const DAY_LABELS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+const DUR_LABEL: Record<SymptomLog['duration'], string> = {
+  today: 'oggi',
+  '3days': 'qualche giorno',
+  week: 'circa una settimana',
+  longer: 'più di una settimana',
+};
+
+// Calendario sintomi navigabile per settimana, con istogramma e popup giornaliero
+function SymptomCalendar({ logs }: { logs: SymptomLog[] }) {
+  const [weekOffset, setWeekOffset] = useState(0); // 0 = settimana corrente
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  const now = new Date();
+  const todayKey = localDateKey(now);
+  const todayMonBased = (now.getDay() + 6) % 7; // Lun=0 .. Dom=6
+
+  // Lunedì della settimana visualizzata
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - todayMonBased + weekOffset * 7);
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const key = localDateKey(d);
+    const dayLogs = logs.filter((l) => l.date.startsWith(key));
+    const avg = dayLogs.length ? dayLogs.reduce((a, l) => a + l.intensity, 0) / dayLogs.length : 0;
+    return { date: d, key, dayLogs, value: Math.round(avg * 10) };
+  });
+
+  const sunday = days[6].date;
+  const max = Math.max(100, ...days.map((d) => d.value));
+
+  // Etichetta periodo (mese/i della settimana)
+  const monthFmt = (d: Date) => d.toLocaleDateString('it-IT', { month: 'long' });
+  const rangeLabel =
+    monday.getMonth() === sunday.getMonth()
+      ? `${monthFmt(monday)} ${monday.getFullYear()}`
+      : `${monthFmt(monday)} – ${monthFmt(sunday)}`;
+
+  const selected = days.find((d) => d.key === selectedKey) ?? null;
+  const dateFmt = (d: Date) => d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
     <View style={styles.barsCard}>
-      <View style={styles.barsTop}>
-        <Text style={{ fontSize: 16 }}>{item.emoji}</Text>
-        <Text style={styles.gaugeLabel}>{item.label}</Text>
-        <Ionicons name={arrow} size={14} color={arrowColor} />
+      {/* Navigazione settimana */}
+      <View style={styles.calNav}>
+        <Pressable onPress={() => setWeekOffset((w) => w - 1)} style={styles.calNavBtn} hitSlop={8}>
+          <Ionicons name="chevron-back" size={18} color={colors.ink} />
+        </Pressable>
+        <View style={{ alignItems: 'center', flex: 1 }}>
+          <Text style={styles.calTitle}>{rangeLabel}</Text>
+          {weekOffset !== 0 && (
+            <Pressable onPress={() => setWeekOffset(0)} hitSlop={6}>
+              <Text style={styles.calToday}>Torna a oggi</Text>
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => setWeekOffset((w) => Math.min(0, w + 1))}
+          style={[styles.calNavBtn, weekOffset >= 0 && styles.calNavBtnDisabled]}
+          hitSlop={8}
+          disabled={weekOffset >= 0}
+        >
+          <Ionicons name="chevron-forward" size={18} color={weekOffset >= 0 ? '#D1D5DB' : colors.ink} />
+        </Pressable>
       </View>
+
+      {/* Istogramma settimanale */}
       <View style={styles.barsRow}>
-        {series.map((v, i) => {
-          const h = Math.max(4, (v / max) * 56);
-          const isToday = i === todayIdx;
-          const empty = v === 0;
+        {days.map((d, i) => {
+          const h = Math.max(4, (d.value / max) * 56);
+          const isToday = d.key === todayKey;
+          const empty = d.value === 0;
           return (
-            <View key={i} style={styles.barCol}>
+            <Pressable key={d.key} style={styles.barCol} onPress={() => setSelectedKey(d.key)} hitSlop={4}>
               <View style={styles.barTrack}>
                 <View
                   style={[
                     styles.barFill,
-                    {
-                      height: h,
-                      backgroundColor: empty ? '#E5E7EB' : isToday ? '#0DB09E' : '#9FE0D6',
-                    },
+                    { height: h, backgroundColor: empty ? '#E5E7EB' : isToday ? '#0DB09E' : '#9FE0D6' },
                   ]}
                 />
               </View>
-              <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>{labels[i]}</Text>
-            </View>
+              <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>{DAY_LABELS[i]}</Text>
+              <Text style={styles.barDayNum}>{d.date.getDate()}</Text>
+            </Pressable>
           );
         })}
       </View>
+
+      {/* Popup dettaglio giorno */}
+      <Modal visible={selected !== null} transparent animationType="fade" onRequestClose={() => setSelectedKey(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setSelectedKey(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            {selected && (
+              <>
+                <Text style={styles.modalTitle}>{dateFmt(selected.date)}</Text>
+                {selected.dayLogs.length === 0 ? (
+                  <View style={styles.modalEmpty}>
+                    <Text style={{ fontSize: 26 }}>🌿</Text>
+                    <Text style={styles.modalEmptyText}>Nessun sintomo registrato</Text>
+                  </View>
+                ) : (
+                  selected.dayLogs.map((l) => (
+                    <View key={l.id} style={styles.modalRow}>
+                      <Text style={{ fontSize: 20 }}>{l.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.modalRowName}>{l.name}</Text>
+                        <Text style={styles.modalRowMeta}>
+                          Intensità {l.intensity}/10 · {DUR_LABEL[l.duration]}
+                        </Text>
+                        {l.notes ? <Text style={styles.modalRowNotes}>{l.notes}</Text> : null}
+                      </View>
+                    </View>
+                  ))
+                )}
+                <Pressable style={styles.modalClose} onPress={() => setSelectedKey(null)}>
+                  <Text style={styles.modalCloseText}>Chiudi</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -460,13 +542,52 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  barsTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  barsRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 76 },
-  barCol: { flex: 1, alignItems: 'center', gap: 6 },
+  calNav: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  calNavBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calNavBtnDisabled: { backgroundColor: '#F9FAFB' },
+  calTitle: { fontSize: 14, fontWeight: '700', color: colors.ink, textTransform: 'capitalize' },
+  calToday: { fontSize: 11, color: '#0DB09E', fontWeight: '700', marginTop: 2 },
+  barsRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
+  barCol: { flex: 1, alignItems: 'center', gap: 5 },
   barTrack: { height: 56, justifyContent: 'flex-end' },
   barFill: { width: 18, borderRadius: 5 },
   barLabel: { fontSize: 11, color: colors.muted, fontWeight: '600' },
   barLabelToday: { color: '#0DB09E', fontWeight: '800' },
+  barDayNum: { fontSize: 10, color: '#B0B7C3' },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 28,
+  },
+  modalCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.lg,
+    padding: 20,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, textTransform: 'capitalize', marginBottom: 14 },
+  modalEmpty: { alignItems: 'center', paddingVertical: 16, gap: 8 },
+  modalEmptyText: { fontSize: 14, color: colors.muted },
+  modalRow: { flexDirection: 'row', gap: 12, paddingVertical: 10, alignItems: 'flex-start' },
+  modalRowName: { fontSize: 15, fontWeight: '700', color: colors.ink },
+  modalRowMeta: { fontSize: 12, color: colors.muted, marginTop: 2 },
+  modalRowNotes: { fontSize: 13, color: colors.ink, marginTop: 4, fontStyle: 'italic' },
+  modalClose: {
+    marginTop: 16,
+    backgroundColor: '#0DB09E',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCloseText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 
   suggestBox: {
     backgroundColor: '#fff',
