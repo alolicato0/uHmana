@@ -20,6 +20,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../src/context/AuthContext';
 import { chat } from '../src/services/openrouter';
+import { computeHealthScore } from '../src/store/symptoms';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
@@ -73,27 +74,6 @@ function scoreLabel(s: number): string {
 }
 function levelLabel(v: number) {
   return v >= 70 ? 'Alta' : v >= 40 ? 'Media' : 'Bassa';
-}
-
-function computeHealthScore(logs: SymptomLog[], wellness: DailyWellness | null): number {
-  // Base = media delle metriche di benessere (tutte: più alto = meglio).
-  // Senza dati benessere parte da 75.
-  let base = 75;
-  if (wellness) {
-    base = (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + wellness.stress) / 5;
-  }
-  // Penalità per sintomi recenti (ultimi 3 giorni)
-  const recent = logs.filter((l) => {
-    const daysAgo = (Date.now() - new Date(l.date).getTime()) / 86_400_000;
-    return daysAgo <= 3;
-  });
-  let penalty = 0;
-  if (recent.length) {
-    const avg = recent.reduce((a, l) => a + l.intensity, 0) / recent.length;
-    penalty = avg * 2.5; // intensità media 10 → -25
-  }
-  // Benessere ottimale (tutto 100) e nessun sintomo → 100
-  return Math.max(0, Math.min(100, Math.round(base - penalty)));
 }
 
 function localDateKey(d: Date): string {
@@ -659,6 +639,22 @@ function SymptomModal({
               style={styles.searchInput}
             />
             <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              {/* Opzione sintomo personalizzato: compare quando il testo non è nella lista */}
+              {search.trim().length > 0 && !filtered.some((s) => s.name.toLowerCase() === search.trim().toLowerCase()) && (
+                <Pressable
+                  onPress={() => { setSelected({ name: search.trim(), emoji: '🩺' }); setStep(1); }}
+                  style={[styles.symptomOption, styles.symptomOptionCustom]}
+                >
+                  <Text style={{ fontSize: 22 }}>🩺</Text>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: colors.primary }}>
+                      Aggiungi "{search.trim()}"
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>Sintomo personalizzato</Text>
+                  </View>
+                  <Ionicons name="add-circle" size={20} color={colors.primary} />
+                </Pressable>
+              )}
               {filtered.map((s) => (
                 <Pressable
                   key={s.name}
@@ -955,6 +951,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
+  },
+  symptomOptionCustom: {
+    backgroundColor: '#F0FDF9',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    marginBottom: 4,
+    borderBottomWidth: 0,
+    borderWidth: 1,
+    borderColor: '#99E6DA',
   },
 
   // Slider intensità

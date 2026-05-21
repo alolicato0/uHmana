@@ -26,15 +26,17 @@ export interface DailyWellness {
 interface SymptomsState {
   logs: SymptomLog[];
   wellness: DailyWellness | null;
+  ownerId: string | null;
   addLog: (log: Omit<SymptomLog, 'id' | 'date'>) => void;
   updateLog: (id: string, patch: Partial<Omit<SymptomLog, 'id' | 'date'>>) => void;
   removeLog: (id: string) => void;
   clearAll: () => void;
+  setOwner: (id: string) => void;
   setWellness: (entry: Omit<DailyWellness, 'date'>) => void;
   getHealthScore: () => number;
   getTodayLogs: () => SymptomLog[];
   getRecentLogs: (n?: number) => SymptomLog[];
-  getWeekTrend: () => number[]; // 7 valori 0-10 (media intensità per giorno)
+  getWeekTrend: () => number[];
 }
 
 function uid(): string {
@@ -45,11 +47,26 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Funzione pura esportata — usabile fuori dallo store (home, sintomi, ecc.)
+export function computeHealthScore(logs: SymptomLog[], wellness: DailyWellness | null): number {
+  let base = 75;
+  if (wellness) {
+    base = (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + wellness.stress) / 5;
+  }
+  const recent = logs.filter((l) => (Date.now() - new Date(l.date).getTime()) / 86_400_000 <= 3);
+  let penalty = 0;
+  if (recent.length) {
+    penalty = (recent.reduce((a, l) => a + l.intensity, 0) / recent.length) * 2.5;
+  }
+  return Math.max(0, Math.min(100, Math.round(base - penalty)));
+}
+
 export const useSymptomsStore = create<SymptomsState>()(
   persist(
     (set, get) => ({
       logs: [],
       wellness: null,
+      ownerId: null,
 
       addLog: (log) => {
         set((s) => ({
@@ -68,8 +85,10 @@ export const useSymptomsStore = create<SymptomsState>()(
       },
 
       clearAll: () => {
-        set({ logs: [], wellness: null });
+        set({ logs: [], wellness: null, ownerId: null });
       },
+
+      setOwner: (id) => set({ ownerId: id }),
 
       setWellness: (entry) => {
         set({ wellness: { ...entry, date: today() } });
@@ -99,25 +118,7 @@ export const useSymptomsStore = create<SymptomsState>()(
 
       getHealthScore: () => {
         const { logs, wellness } = get();
-        let score = 82;
-
-        const recent = logs.filter((l) => {
-          const daysAgo = (Date.now() - new Date(l.date).getTime()) / 86_400_000;
-          return daysAgo <= 3;
-        });
-        if (recent.length) {
-          const avg = recent.reduce((a, l) => a + l.intensity, 0) / recent.length;
-          score -= avg * 4;
-        }
-
-        if (wellness) {
-          const w =
-            (wellness.sleep + wellness.hydration + wellness.energy + wellness.mood + (100 - wellness.stress)) /
-            5;
-          score = score * 0.55 + w * 0.45;
-        }
-
-        return Math.max(10, Math.min(100, Math.round(score)));
+        return computeHealthScore(logs, wellness);
       },
     }),
     {

@@ -46,6 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = useCallback(async (t: string, u: AuthUser) => {
+    // Se l'account cambia, pulisce i dati locali del vecchio utente
+    const store = useSymptomsStore.getState();
+    if (store.ownerId !== null && store.ownerId !== u.id) {
+      store.clearAll();
+    }
+    store.setOwner(u.id);
     tokenRef.current = t;
     setToken(t);
     setUser(u);
@@ -71,11 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setUser(null);
     setHasPickedMode(false);
-    // Rimuove il flag onboarded così il welcome riappare al prossimo login
+    // Rimuove il flag onboarded così il welcome riappare al prossimo login.
+    // I dati sintomi NON vengono cancellati: stesso utente che rientra li ritrova.
+    // Se cambia account, la pulizia avviene in persist() al momento del nuovo login.
     await SecureStore.deleteItemAsync(ONBOARDED_KEY);
     setHasOnboarded(false);
-    // Pulisce i dati locali dell'utente (isolamento per account)
-    useSymptomsStore.getState().clearAll();
   }, []);
 
   const getToken = useCallback(async (): Promise<string | null> => {

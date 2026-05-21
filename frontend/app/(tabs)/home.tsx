@@ -7,6 +7,7 @@ import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/conf
 import { useAuth } from '../../src/context/AuthContext';
 import { useProfileStore } from '../../src/store/profile';
 import { useRemindersStore } from '../../src/store/reminders';
+import { computeHealthScore, useSymptomsStore } from '../../src/store/symptoms';
 import { colors, radii } from '../../src/theme';
 import type { ProfileKind } from '../../src/types';
 
@@ -40,7 +41,7 @@ export default function HomeScreen() {
         <KindToggle kind={activeKind} onChange={setKind} accent={mode.primary} />
 
         <View style={{ height: 20 }} />
-        <HeroCard mode={mode} />
+        <HeroCard mode={mode} kind={activeKind} />
 
         <View style={{ height: 20 }} />
         <View style={styles.grid}>
@@ -95,10 +96,48 @@ function KindToggle({
   );
 }
 
-function HeroCard({ mode }: { mode: ModeConfig }) {
+function HeroCard({ mode, kind }: { mode: ModeConfig; kind: ProfileKind }) {
+  const logs = useSymptomsStore((s) => s.logs);
+  const wellness = useSymptomsStore((s) => s.wellness);
+
+  let gradient: [string, string] = mode.heroGradient;
+  let title = mode.heroTitle;
+  let subtitle = mode.heroSubtitle;
+
+  if (kind === 'human') {
+    const score = computeHealthScore(logs, wellness);
+
+    if (score >= 75) {
+      gradient = ['#0DB09E', '#22C55E'];
+      title = 'Tutto sotto controllo';
+    } else if (score >= 50) {
+      gradient = ['#F59E0B', '#EF4444'];
+      title = 'Attenzione alla salute';
+    } else {
+      gradient = ['#EF4444', '#DC2626'];
+      title = 'Necessita attenzione';
+    }
+
+    // Calcola "ultimo aggiornamento"
+    const times: Date[] = [];
+    if (logs.length > 0) times.push(new Date(logs[0].date));
+    if (wellness?.date) times.push(new Date(wellness.date + 'T12:00:00'));
+
+    if (times.length > 0) {
+      const recent = times.sort((a, b) => b.getTime() - a.getTime())[0];
+      const diffMin = Math.floor((Date.now() - recent.getTime()) / 60000);
+      if (diffMin < 2) subtitle = 'Aggiornato adesso';
+      else if (diffMin < 60) subtitle = `Aggiornato ${diffMin}min fa`;
+      else if (diffMin < 1440) subtitle = `Aggiornato ${Math.floor(diffMin / 60)}h fa`;
+      else subtitle = `Aggiornato ${Math.floor(diffMin / 1440)}gg fa`;
+    } else {
+      subtitle = 'Aggiungi sintomi per monitorare';
+    }
+  }
+
   return (
     <LinearGradient
-      colors={mode.heroGradient}
+      colors={gradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[styles.overview, { borderRadius: mode.cardRadius }]}
@@ -108,10 +147,10 @@ function HeroCard({ mode }: { mode: ModeConfig }) {
         <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>{mode.heroLabel}</Text>
       </View>
       <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 12 }}>
-        {mode.heroTitle}
+        {title}
       </Text>
       <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4 }}>
-        {mode.heroSubtitle}
+        {subtitle}
       </Text>
     </LinearGradient>
   );
