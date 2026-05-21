@@ -27,6 +27,8 @@ interface SymptomsState {
   logs: SymptomLog[];
   wellness: DailyWellness | null;
   addLog: (log: Omit<SymptomLog, 'id' | 'date'>) => void;
+  updateLog: (id: string, patch: Partial<Omit<SymptomLog, 'id' | 'date'>>) => void;
+  removeLog: (id: string) => void;
   setWellness: (entry: Omit<DailyWellness, 'date'>) => void;
   getHealthScore: () => number;
   getTodayLogs: () => SymptomLog[];
@@ -52,6 +54,16 @@ export const useSymptomsStore = create<SymptomsState>()(
         set((s) => ({
           logs: [{ ...log, id: uid(), date: new Date().toISOString() }, ...s.logs],
         }));
+      },
+
+      updateLog: (id, patch) => {
+        set((s) => ({
+          logs: s.logs.map((l) => (l.id === id ? { ...l, ...patch } : l)),
+        }));
+      },
+
+      removeLog: (id) => {
+        set((s) => ({ logs: s.logs.filter((l) => l.id !== id) }));
       },
 
       setWellness: (entry) => {

@@ -55,6 +55,12 @@ export default function SignInScreen() {
     setError(null);
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      // Forza sempre la scelta dell'account invece di rientrare con l'ultimo usato.
+      try {
+        await GoogleSignin.signOut();
+      } catch {
+        // nessun account in cache — ok
+      }
       const res = await GoogleSignin.signIn();
       const tokens = await GoogleSignin.getTokens();
 
