@@ -24,6 +24,8 @@ import {
   type WaterLevel,
   usePetNutritionStore,
 } from '../src/store/petNutrition';
+import { SectionChatModal } from '../src/components/SectionChatModal';
+import { TimeWheelModal } from '../src/components/TimeWheelModal';
 import { radii } from '../src/theme';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -103,6 +105,12 @@ export default function NutrizioneScreen() {
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState('');
 
+  const [showWaterModal, setShowWaterModal] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatPrompt, setChatPrompt] = useState<string | undefined>();
+
   // ── Derived ──
   const todayMeals = meals
     .filter((m) => m.date === today())
@@ -150,8 +158,31 @@ export default function NutrizioneScreen() {
     setToxicResult(r);
   };
 
-  const goToChat = (q: string) =>
-    router.push({ pathname: '/(tabs)/chat', params: { q } } as never);
+  // Apre la chat interna alla sezione Nutrizione (pop-up dal basso)
+  const goToChat = (prompt?: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setChatPrompt(prompt);
+    setChatOpen(true);
+  };
+
+  // Contesto inviato all'AI: riassume i dati della sezione nutrizione
+  const buildNutriContext = () => {
+    const parts: string[] = [`Animale: ${petName}.`];
+    if (petProfile?.species) parts.push(`Specie: ${petProfile.species}.`);
+    if (lastWeight) parts.push(`Peso attuale: ${lastWeight.kg} kg.`);
+    if (todayMeals.length > 0) {
+      parts.push(
+        `Pasti di oggi: ${todayMeals.map((m) => `${m.time} ${MEAL_LABEL[m.type]} ${m.food}${m.grams ? ` (${m.grams}g)` : ''}`).join('; ')}.`,
+      );
+    } else {
+      parts.push('Nessun pasto registrato oggi.');
+    }
+    parts.push(`Idratazione: ${WATER_CONFIG[waterLevel].label}.`);
+    if (toxicResult && toxicInput) {
+      parts.push(`Ultimo controllo alimento: "${toxicInput}" → ${toxicResult.level}.`);
+    }
+    return parts.join(' ');
+  };
 
   const deleteMeal = (id: string) => {
     Alert.alert('Elimina pasto', 'Rimuovere questo pasto?', [
@@ -175,7 +206,7 @@ export default function NutrizioneScreen() {
           <Text style={styles.headerTitle}>🍖 Nutrizione</Text>
           <Text style={styles.headerSub}>Alimentazione e benessere quotidiano{petProfile ? ` di ${petName}` : ''}</Text>
         </View>
-        <Pressable onPress={() => goToChat(`Domanda sull'alimentazione di ${petName}:`)} hitSlop={8}>
+        <Pressable onPress={() => goToChat()} hitSlop={8}>
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={TEAL} />
         </Pressable>
       </View>
@@ -226,12 +257,7 @@ export default function NutrizioneScreen() {
             </Pressable>
             <Pressable style={styles.quickCard} onPress={() => {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              Alert.alert('💧 Acqua & Idratazione', `Com'è l'idratazione di ${petName} oggi?`, [
-                { text: '💧 Scarsa',      onPress: () => setWater('low')  },
-                { text: '💧💧 Normale',  onPress: () => setWater('ok')   },
-                { text: '💧💧💧 Abbondante', onPress: () => setWater('high') },
-                { text: 'Annulla', style: 'cancel' },
-              ]);
+              setShowWaterModal(true);
             }}>
               <Text style={styles.quickEmoji}>💧</Text>
               <Text style={styles.quickCardTitle}>Acqua</Text>
@@ -314,17 +340,21 @@ export default function NutrizioneScreen() {
               </View>
             </View>
             <View style={styles.waterBtns}>
-              {(['low', 'ok', 'high'] as WaterLevel[]).map((lvl) => (
-                <Pressable
-                  key={lvl}
-                  style={[styles.waterBtn, waterLevel === lvl && { backgroundColor: WATER_CONFIG[lvl].color }]}
-                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWater(lvl); }}
-                >
-                  <Text style={[styles.waterBtnTxt, waterLevel === lvl && { color: '#fff' }]}>
-                    {WATER_CONFIG[lvl].emoji} {WATER_CONFIG[lvl].label}
-                  </Text>
-                </Pressable>
-              ))}
+              {(['low', 'ok', 'high'] as WaterLevel[]).map((lvl) => {
+                const active = waterLevel === lvl;
+                return (
+                  <Pressable
+                    key={lvl}
+                    style={[styles.waterBtn, active && { backgroundColor: WATER_CONFIG[lvl].color, borderColor: WATER_CONFIG[lvl].color }]}
+                    onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setWater(lvl); }}
+                  >
+                    <Text style={styles.waterBtnEmoji}>{WATER_CONFIG[lvl].emoji}</Text>
+                    <Text style={[styles.waterBtnTxt, active && { color: '#fff' }]} numberOfLines={1}>
+                      {WATER_CONFIG[lvl].label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
           </View>
         </View>
@@ -451,7 +481,7 @@ export default function NutrizioneScreen() {
               <Text style={{ fontSize: 15 }}>➕</Text>
               <Text style={styles.actionPillTxt}>Nuovo pasto</Text>
             </Pressable>
-            <Pressable style={styles.actionPill} onPress={() => goToChat(`Foto alimento di ${petName}: [allega foto]`)}>
+            <Pressable style={styles.actionPill} onPress={() => goToChat()}>
               <Text style={{ fontSize: 15 }}>📷</Text>
               <Text style={styles.actionPillTxt}>Foto</Text>
             </Pressable>
@@ -459,7 +489,7 @@ export default function NutrizioneScreen() {
               <Text style={{ fontSize: 15 }}>⚖️</Text>
               <Text style={styles.actionPillTxt}>Peso</Text>
             </Pressable>
-            <Pressable style={[styles.actionPill, { backgroundColor: TEAL }]} onPress={() => goToChat(`Chiedo all'AI sull'alimentazione di ${petName}:`)}>
+            <Pressable style={[styles.actionPill, { backgroundColor: TEAL }]} onPress={() => goToChat()}>
               <Ionicons name="chatbubble-ellipses" size={15} color="#fff" />
               <Text style={[styles.actionPillTxt, { color: '#fff' }]}>AI Chat</Text>
             </Pressable>
@@ -506,14 +536,11 @@ export default function NutrizioneScreen() {
                 placeholderTextColor={MUTED}
                 keyboardType="numeric"
               />
-              <TextInput
-                style={[styles.modalInput, { flex: 1 }]}
-                value={mealTime}
-                onChangeText={setMealTime}
-                placeholder="Orario (HH:MM)"
-                placeholderTextColor={MUTED}
-                keyboardType="numbers-and-punctuation"
-              />
+              <Pressable style={[styles.modalInput, styles.timeBtn, { flex: 1 }]} onPress={() => setShowTimePicker(true)}>
+                <Ionicons name="time-outline" size={18} color={TEAL} />
+                <Text style={styles.timeBtnTxt}>{mealTime}</Text>
+                <Ionicons name="chevron-down" size={16} color={MUTED} style={{ marginLeft: 'auto' }} />
+              </Pressable>
             </View>
             <View style={{ height: 14 }} />
             <Pressable style={styles.saveBtn} onPress={saveMeal}>
@@ -553,6 +580,66 @@ export default function NutrizioneScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* ── Acqua modal (bottom sheet) ── */}
+      <Modal visible={showWaterModal} transparent animationType="slide" onRequestClose={() => setShowWaterModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowWaterModal(false)} />
+        <View style={[styles.modalSheet, { paddingBottom: 36 }]}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.modalTitle}>💧 Acqua & Idratazione</Text>
+          <Text style={{ fontSize: 13, color: MUTED, marginBottom: 14 }}>
+            Com'è l'idratazione di {petName} oggi?
+          </Text>
+          {(['high', 'ok', 'low'] as WaterLevel[]).map((lvl) => {
+            const active = waterLevel === lvl;
+            return (
+              <Pressable
+                key={lvl}
+                style={[styles.waterOption, active && { borderColor: WATER_CONFIG[lvl].color, backgroundColor: WATER_CONFIG[lvl].bg }]}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setWater(lvl);
+                  setShowWaterModal(false);
+                }}
+              >
+                <Text style={{ fontSize: 22 }}>{WATER_CONFIG[lvl].emoji}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.waterOptionTitle, active && { color: WATER_CONFIG[lvl].color }]}>
+                    {WATER_CONFIG[lvl].label}
+                  </Text>
+                  <Text style={styles.waterOptionSub}>
+                    {lvl === 'high' ? 'Beve più del solito' : lvl === 'ok' ? 'Nella norma' : 'Ha bevuto poco'}
+                  </Text>
+                </View>
+                {active && <Ionicons name="checkmark-circle" size={20} color={WATER_CONFIG[lvl].color} />}
+              </Pressable>
+            );
+          })}
+          <Pressable style={styles.cancelBtn} onPress={() => setShowWaterModal(false)}>
+            <Text style={styles.cancelBtnTxt}>Annulla</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      {/* ── Time picker (ruota) ── */}
+      <TimeWheelModal
+        visible={showTimePicker}
+        value={mealTime}
+        accent={TEAL}
+        onConfirm={(t) => { setMealTime(t); setShowTimePicker(false); }}
+        onClose={() => setShowTimePicker(false)}
+      />
+
+      {/* ── Chat interna Nutrizione ── */}
+      <SectionChatModal
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+        title="Nutrizione AI"
+        accent={TEAL}
+        welcome={`Ciao! Sono l'assistente nutrizione di ${petName} 🍖\nPosso aiutarti su pasti, dieta, peso, idratazione e alimenti sicuri.`}
+        buildContext={buildNutriContext}
+        autoPrompt={chatPrompt}
+      />
     </SafeAreaView>
   );
 }
@@ -624,10 +711,12 @@ const styles = StyleSheet.create({
   waterSub: { fontSize: 12, color: MUTED, marginTop: 3, lineHeight: 17 },
   waterBtns: { flexDirection: 'row', gap: 8, marginTop: 12 },
   waterBtn: {
-    flex: 1, paddingVertical: 8, borderRadius: 99, backgroundColor: '#F3F4F6',
-    alignItems: 'center',
+    flex: 1, paddingVertical: 9, paddingHorizontal: 6, borderRadius: 14,
+    backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center',
+    gap: 3, borderWidth: 1, borderColor: BORDER, minHeight: 56,
   },
-  waterBtnTxt: { fontSize: 11, fontWeight: '700', color: INK },
+  waterBtnEmoji: { fontSize: 14, lineHeight: 18 },
+  waterBtnTxt: { fontSize: 11, fontWeight: '700', color: INK, textAlign: 'center' },
 
   weightCard: {
     backgroundColor: '#fff', borderRadius: 16, padding: 16,
@@ -710,6 +799,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F7FA', borderWidth: 1, borderColor: BORDER,
     borderRadius: 12, padding: 14, fontSize: 15, color: INK,
   },
+  timeBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 13 },
+  timeBtnTxt: { fontSize: 15, fontWeight: '700', color: INK },
+  waterOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#F5F7FA', borderRadius: 14, padding: 14,
+    marginBottom: 10, borderWidth: 1.5, borderColor: BORDER,
+  },
+  waterOptionTitle: { fontSize: 15, fontWeight: '700', color: INK },
+  waterOptionSub: { fontSize: 11, color: MUTED, marginTop: 1 },
   saveBtn: {
     backgroundColor: TEAL, borderRadius: 99, paddingVertical: 14, alignItems: 'center',
   },
