@@ -52,6 +52,120 @@ function groupByMonth(docs: ReportDoc[]): { monthKey: string; monthLabel: string
 const STATUS_COLOR = { ok: '#16A34A', warning: '#F59E0B', critical: '#EF4444' };
 const STATUS_BG = { ok: '#DCFCE7', warning: '#FEF9C3', critical: '#FEE2E2' };
 const STATUS_ICON = { ok: '🟢', warning: '🟡', critical: '🔴' };
+const BAR_H = 56;
+
+// ─── Trend chart ──────────────────────────────────────────────────────────────
+
+type ValuePoint = { date: string; value: number; unit: string; status: ReportValue['status'] };
+
+function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[] }[] {
+  const byLabel = new Map<string, ValuePoint[]>();
+  const sorted = [...docs].sort((a, b) => a.date.localeCompare(b.date));
+  for (const doc of sorted) {
+    for (const v of doc.values) {
+      const num = parseFloat(v.value);
+      if (isNaN(num)) continue;
+      const list = byLabel.get(v.label) ?? [];
+      list.push({ date: doc.date, value: num, unit: v.unit, status: v.status });
+      byLabel.set(v.label, list);
+    }
+  }
+  return Array.from(byLabel.entries())
+    .sort(([, a], [, b]) => {
+      // prioritise labels with at least one warning/critical
+      const aHasBad = a.some((p) => p.status !== 'ok') ? 1 : 0;
+      const bHasBad = b.some((p) => p.status !== 'ok') ? 1 : 0;
+      return bHasBad - aHasBad;
+    })
+    .slice(0, 5)
+    .map(([label, points]) => ({ label, points }));
+}
+
+function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
+  const nums = points.map((p) => p.value);
+  const minV = Math.min(...nums);
+  const maxV = Math.max(...nums);
+  const range = maxV - minV || 1;
+  const unit = points[0].unit;
+  const last = points[points.length - 1];
+  const hasTrend = points.length > 1;
+  const trend =
+    hasTrend
+      ? last.value > points[0].value
+        ? '↑'
+        : last.value < points[0].value
+        ? '↓'
+        : '→'
+      : null;
+
+  return (
+    <View style={styles.sparkCard}>
+      <View style={styles.sparkHeader}>
+        <Text style={styles.sparkLabel}>{label}</Text>
+        {trend && (
+          <Text style={[styles.sparkTrend, { color: last.status === 'ok' ? '#16A34A' : '#F59E0B' }]}>
+            {trend}
+          </Text>
+        )}
+        <View style={[styles.sparkBadge, { backgroundColor: STATUS_BG[last.status] }]}>
+          <Text style={[styles.sparkBadgeTxt, { color: STATUS_COLOR[last.status] }]}>
+            {last.status === 'ok' ? 'Normale' : last.status === 'warning' ? 'Attenzione' : 'Critico'}
+          </Text>
+        </View>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingBottom: 4 }}>
+          {points.map((p, i) => {
+            const h = Math.max(8, ((p.value - minV) / range) * BAR_H);
+            const [, m, d] = p.date.split('-');
+            return (
+              <View key={i} style={{ alignItems: 'center', gap: 4 }}>
+                <Text style={styles.sparkBarValue}>{p.value}</Text>
+                <View style={{ height: BAR_H, justifyContent: 'flex-end' }}>
+                  <View
+                    style={[
+                      styles.sparkBar,
+                      { height: h, backgroundColor: STATUS_COLOR[p.status] },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.sparkBarDate}>{`${parseInt(d, 10)}/${parseInt(m, 10)}`}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+
+      <View style={styles.sparkFooterRow}>
+        <Text style={styles.sparkLastVal}>
+          Ultimo: <Text style={{ fontWeight: '800', color: STATUS_COLOR[last.status] }}>{last.value} {unit}</Text>
+        </Text>
+        {hasTrend && (
+          <Text style={styles.sparkRange}>
+            min {minV} – max {maxV}
+          </Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function ValueTrendChart({ docs }: { docs: ReportDoc[] }) {
+  const datasets = buildDatasets(docs);
+  if (datasets.length === 0) return null;
+  return (
+    <View style={{ marginBottom: 20 }}>
+      <Text style={styles.sectionTitle}>Andamento valori AI</Text>
+      <View style={{ height: 8 }} />
+      {datasets.map((ds) => (
+        <SparkCard key={ds.label} label={ds.label} points={ds.points} />
+      ))}
+    </View>
+  );
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ReportsCategoryScreen() {
   const { category } = useLocalSearchParams<{ category: string }>();
@@ -90,6 +204,7 @@ export default function ReportsCategoryScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <ValueTrendChart docs={catDocs} />
           {groups.map((group) => (
             <View key={group.monthKey} style={{ marginBottom: 16 }}>
               <Text style={styles.monthLabel}>{group.monthLabel}</Text>
@@ -264,6 +379,27 @@ const styles = StyleSheet.create({
   headerEmoji: { fontSize: 26 },
   headerTitle: { fontSize: 17, fontWeight: '800', color: colors.ink },
   headerCount: { fontSize: 11, color: colors.muted, marginTop: 1 },
+
+  // Spark chart
+  sparkCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.md,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sparkHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sparkLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
+  sparkTrend: { fontSize: 18, fontWeight: '800' },
+  sparkBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  sparkBadgeTxt: { fontSize: 10, fontWeight: '700' },
+  sparkBar: { width: 26, borderRadius: 5, minHeight: 8 },
+  sparkBarValue: { fontSize: 10, fontWeight: '700', color: colors.muted },
+  sparkBarDate: { fontSize: 9, color: '#B0B7C3', fontWeight: '600' },
+  sparkFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  sparkLastVal: { fontSize: 12, color: colors.muted },
+  sparkRange: { fontSize: 10, color: '#B0B7C3' },
 
   monthLabel: {
     fontSize: 13,
