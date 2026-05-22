@@ -1,7 +1,7 @@
 # uHmana — Note di progetto e stato avanzamento
 
-## Stato attuale: BUILD R20 ✅
-Ultima build pushata su `claude/create-uhmana-app-SF02w`, PR #48 aperta verso `main`.
+## Stato attuale: BUILD R21 ✅
+Ultima build pushata su `claude/create-uhmana-app-SF02w`. PR #48 (R19+R20) e PR #49 (R21) verso `main`.
 
 ---
 
@@ -19,6 +19,7 @@ Ultima build pushata su `claude/create-uhmana-app-SF02w`, PR #48 aperta verso `m
 | R18 | Pasti & Dieta animale: dashboard nutrizione con pasti, peso, acqua, tossici |
 | R19 | Assistente Vet rework: chat interna, pagina sintomi, monitoraggio dinamico |
 | R20 | Grafico referti combinato, chat sezione pop-up, picker orario ruota, water modal |
+| R21 | Chat nutrizione apre vuota (no autoPrompt), controllo alimenti collegato all'AI |
 
 ---
 
@@ -50,7 +51,20 @@ Ultima build pushata su `claude/create-uhmana-app-SF02w`, PR #48 aperta verso `m
 - Tutte le chat di sezione aprono come bottom-sheet modal (coerente con pattern Sintomi in Umano)
 - Picker orario sempre a ruota (wheel), mai TextInput libero
 - `buildContext()` / `buildNutriContext()`: funzione che assembla il contesto dati per l'AI della sezione
-- `autoPrompt` in SectionChatModal: messaggio inviato automaticamente all'apertura, usato per "Insight AI"
+- `autoPrompt` in SectionChatModal esiste ma **NON va usato** per aprire la chat con domanda preimpostata (vedi R21)
+
+---
+
+## R21 — Nutrizione: chat vuota + controllo alimenti AI
+
+### Cosa è stato fatto (`frontend/app/nutrizione.tsx`)
+- **Chat apre vuota**: rimosso `chatPrompt` / `autoPrompt`. `goToChat()` non prende più un prompt e non auto-invia nessuna domanda. La chat mostra solo il messaggio di benvenuto. Tutti i bottoni (Insight AI quick card, CTA insight, "maggiori dettagli" tossici, header, pill) aprono la chat vuota.
+- **Controllo alimenti collegato all'AI**: rimossi `TOXIC_DB` e `checkToxicity` (lista hardcoded che dava falsi negativi, es. "salame" risultava sicuro). Ora `runToxicCheck(food?)` chiama `chat()` con prompt veterinario specie-specifico (`petProfile.species`). L'AI risponde iniziando con `PERICOLOSO` / `ATTENZIONE` / `SICURO` → parsing del verdetto + messaggio. Loading spinner sul bottone Verifica durante la richiesta.
+
+### Decisioni di design
+- **Le chat di sezione aprono SEMPRE vuote** — niente domande preimpostate auto-inviate. Vale anche per le future schermate.
+- **Verifiche/lookup specie-sensibili passano dall'AI**, non da liste statiche locali (un alimento può essere sicuro per l'uomo ma tossico per cane/gatto).
+- Pattern parsing verdetto AI: prompt forza prima parola tra keyword maiuscole → regex `^\s*(PERICOLOSO|ATTENZIONE|SICURO)\s*:?\s*` per ripulire il messaggio mostrato.
 
 ---
 

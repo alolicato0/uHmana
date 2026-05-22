@@ -65,6 +65,11 @@ Usare `SectionChatModal` (`frontend/src/components/SectionChatModal.tsx`):
 ```
 - **Ogni sezione ha la sua chat interna**, non si apre mai la chat globale dell'app
 - `buildContext()` deve includere i dati rilevanti della sezione (profilo, misurazioni, ecc.)
+- **La chat apre SEMPRE vuota** (solo messaggio di benvenuto). NON usare `autoPrompt` per pre-inviare domande all'apertura: l'utente non vuole risposte auto-generate (R21)
+
+### Verifiche/lookup specie-sensibili → sempre AI
+- Controlli come "questo alimento è tossico?" devono passare dall'AI con contesto di specie (`petProfile.species`), MAI da liste statiche hardcoded (un alimento sicuro per l'uomo può essere tossico per cane/gatto)
+- Pattern verdetto: forzare l'AI a iniziare con una keyword maiuscola (es. `PERICOLOSO`/`ATTENZIONE`/`SICURO`), poi fare il parsing del livello e ripulire il messaggio mostrato
 
 ### Chat Vet (persistente, store-backed)
 Usare `VetChatModal` (`frontend/src/components/VetChatModal.tsx`):

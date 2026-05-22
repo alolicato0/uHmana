@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -16,6 +17,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../src/context/AuthContext';
+import { chat } from '../src/services/openrouter';
 import { useProfileStore } from '../src/store/profile';
 import {
   MEAL_EMOJI,
@@ -61,33 +64,16 @@ function relativeTime(time: string) {
   return `${Math.floor(diff / 60)}h fa`;
 }
 
-// ─── Tossici noti ─────────────────────────────────────────────────────────────
-const TOXIC_DB: { keywords: string[]; level: 'danger' | 'warning'; msg: string }[] = [
-  { keywords: ['cioccolato', 'cacao', 'cocoa'], level: 'danger',  msg: 'Il cioccolato contiene teobromina, molto tossica per cani e gatti. Chiama subito il veterinario.' },
-  { keywords: ['cipolla', 'aglio', 'porro', 'scalogno'], level: 'danger', msg: 'I bulbi della famiglia allium distruggono i globuli rossi. Pericoloso anche in polvere.' },
-  { keywords: ['uva', 'uvetta', 'sultana'], level: 'danger', msg: "L'uva e l'uvetta possono causare insufficienza renale acuta, anche in piccole quantità." },
-  { keywords: ['xilitolo', 'xylitol', 'gomma', 'caramelle'], level: 'danger', msg: 'Lo xilitolo causa ipoglicemia grave e danni al fegato. Controlla etichette di dolci e chewing gum.' },
-  { keywords: ['avocado'], level: 'warning', msg: "L'avocado contiene persina, tossica soprattutto per uccelli e conigli; nei cani può causare disturbi gastrici." },
-  { keywords: ['noce', 'noci', 'macadamia'], level: 'warning', msg: 'Le noci di macadamia possono causare debolezza, tremori e ipertermia nei cani.' },
-  { keywords: ['alcol', 'vino', 'birra', 'superalcolici'], level: 'danger', msg: "Anche piccole quantità di alcol sono tossiche. Può causare coma e morte." },
-  { keywords: ['caffè', 'the', 'tè', 'caffeina'], level: 'warning', msg: 'La caffeina può causare tachicardia e convulsioni. Evita caffè, tè e energy drink.' },
-];
-
-function checkToxicity(food: string): { level: 'danger' | 'warning' | 'ok'; msg: string } {
-  const lower = food.toLowerCase();
-  for (const entry of TOXIC_DB) {
-    if (entry.keywords.some((k) => lower.includes(k))) {
-      return { level: entry.level, msg: entry.msg };
-    }
-  }
-  return { level: 'ok', msg: `"${food}" non è nella lista degli alimenti noti come tossici. Per dubbi chiedi all'AI.` };
-}
+// ─── Controllo alimenti (AI) ────────────────────────────────────────────────
+type ToxicLevel = 'danger' | 'warning' | 'ok';
+type ToxicResult = { level: ToxicLevel; msg: string };
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function NutrizioneScreen() {
   const profiles = useProfileStore((s) => s.profiles);
   const petProfile = profiles.find((p) => p.kind === 'pet');
   const petName = petProfile?.name ?? 'il tuo animale';
+  const { getToken } = useAuth();
 
   const { meals, weightLog, waterLevel, addMeal, removeMeal, addWeight, setWater } =
     usePetNutritionStore();
@@ -100,7 +86,8 @@ export default function NutrizioneScreen() {
   const [mealTime, setMealTime] = useState(nowTime());
 
   const [toxicInput, setToxicInput] = useState('');
-  const [toxicResult, setToxicResult] = useState<ReturnType<typeof checkToxicity> | null>(null);
+  const [toxicResult, setToxicResult] = useState<ToxicResult | null>(null);
+  const [toxicLoading, setToxicLoading] = useState(false);
 
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [weightInput, setWeightInput] = useState('');
@@ -109,7 +96,6 @@ export default function NutrizioneScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatPrompt, setChatPrompt] = useState<string | undefined>();
 
   // ── Derived ──
   const todayMeals = meals
@@ -151,17 +137,39 @@ export default function NutrizioneScreen() {
     setShowWeightModal(false);
   };
 
-  const handleToxicCheck = () => {
-    if (!toxicInput.trim()) return;
+  // Verifica alimento direttamente con l'AI (specie-specifica)
+  const runToxicCheck = async (foodArg?: string) => {
+    const food = (foodArg ?? toxicInput).trim();
+    if (!food || toxicLoading) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const r = checkToxicity(toxicInput.trim());
-    setToxicResult(r);
+    setToxicResult(null);
+    setToxicLoading(true);
+    try {
+      const species = petProfile?.species ?? 'cane o gatto';
+      const prompt =
+        `Sei un veterinario esperto. L'alimento "${food}" è sicuro da far mangiare a un ${species}? ` +
+        `Rispondi OBBLIGATORIAMENTE iniziando con UNA sola parola in maiuscolo tra PERICOLOSO, ATTENZIONE o SICURO, ` +
+        `seguita da due punti e una spiegazione breve (max 2 frasi).`;
+      const reply = await chat({
+        history: [{ id: 'tox', role: 'user', text: prompt, createdAt: new Date().toISOString() }],
+        token: await getToken(),
+      });
+      const upper = reply.trim().toUpperCase();
+      let level: ToxicLevel = 'warning';
+      if (upper.startsWith('PERICOLOSO')) level = 'danger';
+      else if (upper.startsWith('SICURO')) level = 'ok';
+      const msg = reply.replace(/^\s*(PERICOLOSO|ATTENZIONE|SICURO)\s*:?\s*/i, '').trim() || reply.trim();
+      setToxicResult({ level, msg });
+    } catch {
+      setToxicResult({ level: 'warning', msg: "Impossibile contattare l'AI. Riprova o consulta il veterinario." });
+    } finally {
+      setToxicLoading(false);
+    }
   };
 
-  // Apre la chat interna alla sezione Nutrizione (pop-up dal basso)
-  const goToChat = (prompt?: string) => {
+  // Apre la chat interna alla sezione Nutrizione (pop-up dal basso, vuota)
+  const goToChat = () => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setChatPrompt(prompt);
     setChatOpen(true);
   };
 
@@ -268,7 +276,7 @@ export default function NutrizioneScreen() {
               <Text style={styles.quickCardTitle}>Peso</Text>
               <Text style={styles.quickCardSub}>{lastWeight ? `${lastWeight.kg} kg` : 'Aggiungi'}</Text>
             </Pressable>
-            <Pressable style={styles.quickCard} onPress={() => goToChat(`Insight alimentazione di ${petName}: cosa posso migliorare?`)}>
+            <Pressable style={styles.quickCard} onPress={() => goToChat()}>
               <Text style={styles.quickEmoji}>🧠</Text>
               <Text style={styles.quickCardTitle}>Insight AI</Text>
               <Text style={styles.quickCardSub}>Consigli</Text>
@@ -400,20 +408,21 @@ export default function NutrizioneScreen() {
         {/* ── Cibo tossico ── */}
         <View style={{ marginTop: 22 }}>
           <Text style={styles.sectionTitle}>⚠️ Controllo alimenti</Text>
-          <Text style={styles.sectionSubtitle}>Verifica se un alimento è sicuro per {petName}</Text>
+          <Text style={styles.sectionSubtitle}>Chiedi all'AI se un alimento è sicuro per {petName}</Text>
           <View style={styles.toxicBox}>
             <View style={styles.toxicInputRow}>
               <TextInput
                 style={styles.toxicInput}
                 value={toxicInput}
                 onChangeText={setToxicInput}
-                placeholder="Es. cioccolato, uva, cipolla…"
+                placeholder="Es. salame, cioccolato, uva…"
                 placeholderTextColor={MUTED}
                 returnKeyType="search"
-                onSubmitEditing={handleToxicCheck}
+                onSubmitEditing={() => void runToxicCheck()}
+                editable={!toxicLoading}
               />
-              <Pressable style={styles.toxicBtn} onPress={handleToxicCheck}>
-                <Text style={styles.toxicBtnTxt}>Verifica</Text>
+              <Pressable style={[styles.toxicBtn, toxicLoading && { opacity: 0.7 }]} onPress={() => void runToxicCheck()} disabled={toxicLoading}>
+                {toxicLoading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.toxicBtnTxt}>Verifica</Text>}
               </Pressable>
             </View>
             {toxicResult && (
@@ -432,11 +441,8 @@ export default function NutrizioneScreen() {
                   </Text>
                   <Text style={styles.toxicResultMsg}>{toxicResult.msg}</Text>
                   {toxicResult.level !== 'ok' && (
-                    <Pressable
-                      style={styles.toxicAiBtn}
-                      onPress={() => goToChat(`${petName} ha mangiato ${toxicInput}. È pericoloso? Cosa devo fare?`)}
-                    >
-                      <Text style={styles.toxicAiBtnTxt}>Chiedi all'AI per maggiori dettagli →</Text>
+                    <Pressable style={styles.toxicAiBtn} onPress={() => goToChat()}>
+                      <Text style={styles.toxicAiBtnTxt}>Apri la chat per maggiori dettagli →</Text>
                     </Pressable>
                   )}
                 </View>
@@ -444,7 +450,7 @@ export default function NutrizioneScreen() {
             )}
             <View style={styles.toxicExamples}>
               {['cioccolato', 'uva', 'cipolla', 'avocado'].map((ex) => (
-                <Pressable key={ex} style={styles.toxicChip} onPress={() => { setToxicInput(ex); setToxicResult(checkToxicity(ex)); }}>
+                <Pressable key={ex} style={styles.toxicChip} onPress={() => { setToxicInput(ex); void runToxicCheck(ex); }}>
                   <Text style={styles.toxicChipTxt}>{ex}</Text>
                 </Pressable>
               ))}
@@ -465,10 +471,7 @@ export default function NutrizioneScreen() {
               ? `${petName} ha già mangiato ${todayMeals.length} volte oggi. Buona abitudine di alimentazione regolare!`
               : `Hai registrato ${meals.length} pasto${meals.length === 1 ? '' : 'i'} in totale. Continua a registrare per ottenere insight sull'andamento.`}
           </Text>
-          <Pressable
-            style={styles.insightCta}
-            onPress={() => goToChat(`Dammi un insight sull'alimentazione di ${petName} basato su questi dati: ${todayMeals.map(m => `${m.time} ${m.food}`).join(', ') || 'nessun pasto registrato oggi'}`)}
-          >
+          <Pressable style={styles.insightCta} onPress={() => goToChat()}>
             <Text style={styles.insightCtaTxt}>Chiedi un'analisi all'AI →</Text>
           </Pressable>
         </View>
@@ -638,7 +641,6 @@ export default function NutrizioneScreen() {
         accent={TEAL}
         welcome={`Ciao! Sono l'assistente nutrizione di ${petName} 🍖\nPosso aiutarti su pasti, dieta, peso, idratazione e alimenti sicuri.`}
         buildContext={buildNutriContext}
-        autoPrompt={chatPrompt}
       />
     </SafeAreaView>
   );
