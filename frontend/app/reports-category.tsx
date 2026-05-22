@@ -5,16 +5,23 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import {
   Alert,
+  LayoutAnimation,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type ReportDoc, type ReportValue, useReportsLocalStore } from '../src/store/reportsLocal';
 import { colors, radii } from '../src/theme';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const CATEGORIES: { key: string; label: string; emoji: string }[] = [
   { key: 'Analisi del sangue', label: 'Analisi del sangue', emoji: '🩸' },
@@ -52,7 +59,6 @@ function groupByMonth(docs: ReportDoc[]): { monthKey: string; monthLabel: string
 const STATUS_COLOR = { ok: '#16A34A', warning: '#F59E0B', critical: '#EF4444' };
 const STATUS_BG = { ok: '#DCFCE7', warning: '#FEF9C3', critical: '#FEE2E2' };
 const STATUS_ICON = { ok: '🟢', warning: '🟡', critical: '🔴' };
-const BAR_H = 56;
 
 // ─── Trend chart ──────────────────────────────────────────────────────────────
 
@@ -81,72 +87,96 @@ function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[]
     .map(([label, points]) => ({ label, points }));
 }
 
-function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
+const CHART_W = 150;
+const CHART_H = 34;
+
+function Sparkline({ points, color }: { points: ValuePoint[]; color: string }) {
   const nums = points.map((p) => p.value);
   const minV = Math.min(...nums);
   const maxV = Math.max(...nums);
   const range = maxV - minV || 1;
+  const n = points.length;
+
+  const coords = points.map((p, i) => ({
+    x: n === 1 ? CHART_W / 2 : (i / (n - 1)) * CHART_W,
+    y: CHART_H - ((p.value - minV) / range) * CHART_H,
+  }));
+
+  return (
+    <View style={{ width: CHART_W, height: CHART_H }}>
+      {coords.slice(0, -1).map((c, i) => {
+        const next = coords[i + 1];
+        const dx = next.x - c.x;
+        const dy = next.y - c.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+        const mx = (c.x + next.x) / 2;
+        const my = (c.y + next.y) / 2;
+        return (
+          <View
+            key={i}
+            style={{
+              position: 'absolute',
+              left: mx - len / 2,
+              top: my - 1,
+              width: len,
+              height: 2,
+              borderRadius: 1,
+              backgroundColor: color,
+              transform: [{ rotateZ: `${angle}rad` }],
+            }}
+          />
+        );
+      })}
+      {coords.map((c, i) => (
+        <View
+          key={`d${i}`}
+          style={{
+            position: 'absolute',
+            left: c.x - 2.5,
+            top: c.y - 2.5,
+            width: 5,
+            height: 5,
+            borderRadius: 3,
+            backgroundColor: i === n - 1 ? color : '#fff',
+            borderWidth: 1.5,
+            borderColor: color,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
+  const nums = points.map((p) => p.value);
+  const minV = Math.min(...nums);
+  const maxV = Math.max(...nums);
   const unit = points[0].unit;
   const last = points[points.length - 1];
   const hasTrend = points.length > 1;
-  const trend =
-    hasTrend
-      ? last.value > points[0].value
-        ? '↑'
-        : last.value < points[0].value
-        ? '↓'
-        : '→'
-      : null;
+  const trend = hasTrend
+    ? last.value > points[0].value
+      ? '↑'
+      : last.value < points[0].value
+      ? '↓'
+      : '→'
+    : null;
+  const lineColor = STATUS_COLOR[last.status];
 
   return (
     <View style={styles.sparkCard}>
-      <View style={styles.sparkHeader}>
-        <Text style={styles.sparkLabel}>{label}</Text>
-        {trend && (
-          <Text style={[styles.sparkTrend, { color: last.status === 'ok' ? '#16A34A' : '#F59E0B' }]}>
-            {trend}
-          </Text>
-        )}
-        <View style={[styles.sparkBadge, { backgroundColor: STATUS_BG[last.status] }]}>
-          <Text style={[styles.sparkBadgeTxt, { color: STATUS_COLOR[last.status] }]}>
-            {last.status === 'ok' ? 'Normale' : last.status === 'warning' ? 'Attenzione' : 'Critico'}
-          </Text>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={styles.sparkHeader}>
+          <Text style={styles.sparkLabel} numberOfLines={1}>{label}</Text>
+          {trend && <Text style={[styles.sparkTrend, { color: lineColor }]}>{trend}</Text>}
         </View>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingBottom: 4 }}>
-          {points.map((p, i) => {
-            const h = Math.max(8, ((p.value - minV) / range) * BAR_H);
-            const [, m, d] = p.date.split('-');
-            return (
-              <View key={i} style={{ alignItems: 'center', gap: 4 }}>
-                <Text style={styles.sparkBarValue}>{p.value}</Text>
-                <View style={{ height: BAR_H, justifyContent: 'flex-end' }}>
-                  <View
-                    style={[
-                      styles.sparkBar,
-                      { height: h, backgroundColor: STATUS_COLOR[p.status] },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.sparkBarDate}>{`${parseInt(d, 10)}/${parseInt(m, 10)}`}</Text>
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
-
-      <View style={styles.sparkFooterRow}>
         <Text style={styles.sparkLastVal}>
-          Ultimo: <Text style={{ fontWeight: '800', color: STATUS_COLOR[last.status] }}>{last.value} {unit}</Text>
+          <Text style={{ fontWeight: '800', color: lineColor }}>{last.value} {unit}</Text>
+          {hasTrend ? `  ·  min ${minV} / max ${maxV}` : ''}
         </Text>
-        {hasTrend && (
-          <Text style={styles.sparkRange}>
-            min {minV} – max {maxV}
-          </Text>
-        )}
       </View>
+      <Sparkline points={points} color={lineColor} />
     </View>
   );
 }
@@ -155,7 +185,7 @@ function ValueTrendChart({ docs }: { docs: ReportDoc[] }) {
   const datasets = buildDatasets(docs);
   if (datasets.length === 0) return null;
   return (
-    <View style={{ marginBottom: 20 }}>
+    <View style={{ marginBottom: 16 }}>
       <Text style={styles.sectionTitle}>Andamento valori AI</Text>
       <View style={{ height: 8 }} />
       {datasets.map((ds) => (
@@ -179,6 +209,20 @@ export default function ReportsCategoryScreen() {
   const catInfo = CATEGORIES.find((c) => c.key === category);
   const catDocs = docs.filter((d) => d.category === category);
   const groups = groupByMonth(catDocs);
+
+  // Mese più recente aperto di default, gli altri chiusi.
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(groups[0] ? [groups[0].monthKey] : []),
+  );
+  const toggleMonth = (key: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
@@ -205,14 +249,28 @@ export default function ReportsCategoryScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 14, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
           <ValueTrendChart docs={catDocs} />
-          {groups.map((group) => (
-            <View key={group.monthKey} style={{ marginBottom: 16 }}>
-              <Text style={styles.monthLabel}>{group.monthLabel}</Text>
-              {group.docs.map((doc) => (
-                <DocCard key={doc.id} doc={doc} onPress={() => setSelectedDoc(doc)} />
-              ))}
-            </View>
-          ))}
+          {groups.map((group) => {
+            const open = expanded.has(group.monthKey);
+            return (
+              <View key={group.monthKey} style={{ marginBottom: 10 }}>
+                <Pressable style={styles.monthHeader} onPress={() => toggleMonth(group.monthKey)}>
+                  <Ionicons
+                    name={open ? 'chevron-down' : 'chevron-forward'}
+                    size={16}
+                    color={colors.muted}
+                  />
+                  <Text style={styles.monthLabel}>{group.monthLabel}</Text>
+                  <View style={styles.monthCountBadge}>
+                    <Text style={styles.monthCountTxt}>{group.docs.length}</Text>
+                  </View>
+                </Pressable>
+                {open &&
+                  group.docs.map((doc) => (
+                    <DocCard key={doc.id} doc={doc} onPress={() => setSelectedDoc(doc)} />
+                  ))}
+              </View>
+            );
+          })}
         </ScrollView>
       )}
 
@@ -380,36 +438,47 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '800', color: colors.ink },
   headerCount: { fontSize: 11, color: colors.muted, marginTop: 1 },
 
-  // Spark chart
+  // Spark chart (compatto, stile andamento)
   sparkCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     backgroundColor: '#fff',
     borderRadius: radii.md,
-    padding: 14,
-    marginBottom: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  sparkHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sparkLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
-  sparkTrend: { fontSize: 18, fontWeight: '800' },
-  sparkBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  sparkBadgeTxt: { fontSize: 10, fontWeight: '700' },
-  sparkBar: { width: 26, borderRadius: 5, minHeight: 8 },
-  sparkBarValue: { fontSize: 10, fontWeight: '700', color: colors.muted },
-  sparkBarDate: { fontSize: 9, color: '#B0B7C3', fontWeight: '600' },
-  sparkFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  sparkLastVal: { fontSize: 12, color: colors.muted },
-  sparkRange: { fontSize: 10, color: '#B0B7C3' },
+  sparkHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sparkLabel: { flexShrink: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
+  sparkTrend: { fontSize: 15, fontWeight: '800' },
+  sparkLastVal: { fontSize: 11, color: colors.muted, marginTop: 3 },
 
+  monthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    marginTop: 2,
+  },
   monthLabel: {
     fontSize: 13,
     fontWeight: '700',
     color: colors.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginBottom: 8,
-    marginTop: 4,
   },
+  monthCountBadge: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 9,
+    backgroundColor: '#EEF1F5',
+    alignItems: 'center',
+  },
+  monthCountTxt: { fontSize: 11, fontWeight: '700', color: colors.muted },
 
   emptyBox: {
     margin: 24,
