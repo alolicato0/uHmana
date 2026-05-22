@@ -78,7 +78,6 @@ function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[]
   }
   return Array.from(byLabel.entries())
     .sort(([, a], [, b]) => {
-      // prioritise labels with at least one warning/critical
       const aHasBad = a.some((p) => p.status !== 'ok') ? 1 : 0;
       const bHasBad = b.some((p) => p.status !== 'ok') ? 1 : 0;
       return bHasBad - aHasBad;
@@ -88,11 +87,17 @@ function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[]
 }
 
 const STATUS_LABEL = { ok: 'Normale', warning: 'Attenzione', critical: 'Critico' };
-const CHART_H = 60;
-const Y_AXIS_W = 38;
-const DATE_ROW_H = 16;
+const CH = 90;        // chart plot height
+const YAXIS_W = 46;   // y-axis column width
+const GRID_LINES = 4; // horizontal grid lines count
+const PAD_V = 8;      // vertical padding inside plot
 
-function TrendLine({
+function shortDate(iso: string) {
+  const [, m, d] = iso.split('-');
+  return `${parseInt(d, 10)}/${parseInt(m, 10)}`;
+}
+
+function GridChart({
   points,
   color,
   chartW,
@@ -101,23 +106,64 @@ function TrendLine({
   color: string;
   chartW: number;
 }) {
-  const nums = points.map((p) => p.value);
-  const minV = Math.min(...nums);
-  const maxV = Math.max(...nums);
-  const range = maxV - minV || 1;
   const n = points.length;
-  const PAD = 6;
+  const nums = points.map((p) => p.value);
+  const rawMin = Math.min(...nums);
+  const rawMax = Math.max(...nums);
+  const spread = rawMax - rawMin;
+  // Add ±10% padding so line doesn't touch top/bottom; handle flat line
+  const pad = spread > 0 ? spread * 0.18 : Math.max(rawMin * 0.15, 1);
+  const domMin = rawMin - pad;
+  const domMax = rawMax + pad;
+  const domRange = domMax - domMin;
 
-  const coords = points.map((p, i) => ({
-    x: n === 1 ? chartW / 2 : (i / (n - 1)) * (chartW - PAD * 2) + PAD,
-    y: PAD + (CHART_H - PAD * 2) - ((p.value - minV) / range) * (CHART_H - PAD * 2),
-    p,
-  }));
+  const getX = (i: number) =>
+    n === 1 ? chartW / 2 : PAD_V + (i / (n - 1)) * (chartW - PAD_V * 2);
+  const getY = (v: number) =>
+    PAD_V + (CH - PAD_V * 2) * (1 - (v - domMin) / domRange);
+
+  const coords = points.map((p, i) => ({ x: getX(i), y: getY(p.value), p }));
+
+  // Horizontal grid y-positions and their display values
+  const gridRows = Array.from({ length: GRID_LINES + 1 }, (_, i) => {
+    const frac = i / GRID_LINES;
+    return {
+      y: PAD_V + (CH - PAD_V * 2) * (1 - frac),
+      val: domMin + domRange * frac,
+    };
+  });
 
   return (
-    <View style={{ width: chartW, height: CHART_H }}>
-      {/* Baseline */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1, backgroundColor: '#E5E7EB' }} />
+    <View style={{ flex: 1, height: CH }}>
+      {/* Horizontal grid lines */}
+      {gridRows.map((g, i) => (
+        <View
+          key={`h${i}`}
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: g.y,
+            height: 1,
+            backgroundColor: i === 0 || i === GRID_LINES ? '#D1D5DB' : '#E5E7EB',
+          }}
+        />
+      ))}
+
+      {/* Vertical guide lines at each data point */}
+      {coords.map((c, i) => (
+        <View
+          key={`v${i}`}
+          style={{
+            position: 'absolute',
+            left: c.x,
+            top: PAD_V,
+            width: 1,
+            height: CH - PAD_V * 2,
+            backgroundColor: '#F3F4F6',
+          }}
+        />
+      ))}
 
       {/* Line segments */}
       {coords.slice(0, -1).map((c, i) => {
@@ -145,42 +191,42 @@ function TrendLine({
         );
       })}
 
-      {/* Dots */}
+      {/* Dots + value labels */}
       {coords.map((c, i) => {
-        const isLast = i === coords.length - 1;
-        const isFirst = i === 0;
-        const showLabel = isFirst || isLast || n <= 4;
+        const isLast = i === n - 1;
+        const dotR = isLast ? 6 : 4;
+        const labelAbove = c.y > CH / 2;
         return (
           <View key={`d${i}`}>
+            {/* dot */}
             <View
               style={{
                 position: 'absolute',
-                left: c.x - (isLast ? 5 : 3.5),
-                top: c.y - (isLast ? 5 : 3.5),
-                width: isLast ? 10 : 7,
-                height: isLast ? 10 : 7,
-                borderRadius: isLast ? 5 : 3.5,
-                backgroundColor: isLast ? color : '#fff',
-                borderWidth: isLast ? 2 : 1.5,
-                borderColor: color,
+                left: c.x - dotR,
+                top: c.y - dotR,
+                width: dotR * 2,
+                height: dotR * 2,
+                borderRadius: dotR,
+                backgroundColor: color,
+                borderWidth: isLast ? 2 : 0,
+                borderColor: '#fff',
               }}
             />
-            {showLabel && (
-              <Text
-                style={{
-                  position: 'absolute',
-                  left: isFirst ? c.x + 7 : c.x - 22,
-                  top: c.y - (c.y > CHART_H / 2 ? 16 : -4),
-                  fontSize: 10,
-                  fontWeight: '700',
-                  color,
-                  minWidth: 20,
-                  textAlign: isFirst ? 'left' : 'right',
-                }}
-              >
-                {c.p.value}
-              </Text>
-            )}
+            {/* value label */}
+            <Text
+              style={{
+                position: 'absolute',
+                left: c.x - 20,
+                top: labelAbove ? c.y - 18 : c.y + dotR + 2,
+                width: 40,
+                textAlign: 'center',
+                fontSize: 10,
+                fontWeight: '800',
+                color,
+              }}
+            >
+              {c.p.value}
+            </Text>
           </View>
         );
       })}
@@ -189,10 +235,14 @@ function TrendLine({
 }
 
 function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
-  const [chartW, setChartW] = useState(240);
+  const [chartW, setChartW] = useState(220);
   const nums = points.map((p) => p.value);
-  const minV = Math.min(...nums);
-  const maxV = Math.max(...nums);
+  const rawMin = Math.min(...nums);
+  const rawMax = Math.max(...nums);
+  const spread = rawMax - rawMin;
+  const pad = spread > 0 ? spread * 0.18 : Math.max(rawMin * 0.15, 1);
+  const domMin = rawMin - pad;
+  const domMax = rawMax + pad;
   const unit = points[0].unit;
   const last = points[points.length - 1];
   const first = points[0];
@@ -201,87 +251,78 @@ function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
 
   const trend = hasTrend
     ? last.value > first.value ? '↑' : last.value < first.value ? '↓' : '→'
-    : null;
+    : '•';
 
-  const shortDate = (iso: string) => {
-    const [, m, d] = iso.split('-');
-    return `${parseInt(d, 10)}/${parseInt(m, 10)}`;
-  };
+  // 3 y-axis labels: top, mid, bottom
+  const yLabels = [domMax, (domMax + domMin) / 2, domMin].map((v) =>
+    Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1),
+  );
 
   return (
     <View style={[styles.sparkCard, { borderLeftColor: color }]}>
-      {/* Header */}
+      {/* Header row */}
       <View style={styles.sparkHeader}>
         <Text style={styles.sparkLabel} numberOfLines={1}>{label}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[last.status] }]}>
-          <Text style={[styles.statusBadgeTxt, { color }]}>{STATUS_LABEL[last.status]}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={[styles.sparkTrend, { color }]}>{trend}</Text>
+          <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[last.status] }]}>
+            <Text style={[styles.statusBadgeTxt, { color }]}>{STATUS_LABEL[last.status]}</Text>
+          </View>
         </View>
       </View>
 
-      {/* Big value */}
+      {/* Chart area */}
+      <View style={{ flexDirection: 'row', marginTop: 10 }}>
+        {/* Y-axis labels */}
+        <View style={{ width: YAXIS_W, height: CH, justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: 6, paddingVertical: PAD_V }}>
+          {yLabels.map((l, i) => (
+            <Text key={i} style={styles.axisLabel}>{l}</Text>
+          ))}
+        </View>
+        {/* Plot */}
+        <View
+          style={{ flex: 1, height: CH }}
+          onLayout={(e) => setChartW(e.nativeEvent.layout.width)}
+        >
+          <GridChart points={points} color={color} chartW={chartW} />
+        </View>
+      </View>
+
+      {/* X-axis dates */}
+      <View style={{ marginLeft: YAXIS_W, height: 16, marginTop: 3 }}>
+        {points.map((p, i) => {
+          const frac = points.length === 1 ? 0.5 : i / (points.length - 1);
+          const x = PAD_V + frac * (chartW - PAD_V * 2);
+          return (
+            <Text
+              key={i}
+              style={[styles.dateLabel, { position: 'absolute', left: x - 14, width: 28, textAlign: 'center' }]}
+            >
+              {shortDate(p.date)}
+            </Text>
+          );
+        })}
+      </View>
+
+      {/* Footer */}
+      <Text style={styles.sparkNote}>
+        {hasTrend
+          ? `${points.length} rilevamenti · ${formatDate(first.date)} → ${formatDate(last.date)}`
+          : `Solo 1 rilevamento (${formatDate(last.date)}) · Aggiungi altri referti per vedere l'evoluzione`}
+      </Text>
+
+      {/* Last value summary */}
       <View style={styles.sparkValueRow}>
         <Text style={[styles.sparkBigValue, { color }]}>
           {last.value}
           <Text style={styles.sparkUnit}> {unit}</Text>
         </Text>
-        {trend && (
-          <Text style={[styles.sparkTrend, { color }]}>{trend}</Text>
+        {hasTrend && (
+          <Text style={{ fontSize: 11, color: colors.muted }}>
+            min {Math.min(...nums)} · max {Math.max(...nums)}
+          </Text>
         )}
       </View>
-
-      {/* Chart (2+ points) */}
-      {hasTrend ? (
-        <View style={{ marginTop: 10 }}>
-          {/* Chart row: y-axis + plot */}
-          <View style={{ flexDirection: 'row', alignItems: 'stretch' }}>
-            <View style={{ width: Y_AXIS_W, justifyContent: 'space-between', paddingVertical: 2, alignItems: 'flex-end', paddingRight: 6 }}>
-              <Text style={styles.axisLabel}>{maxV}</Text>
-              <Text style={styles.axisLabel}>{minV}</Text>
-            </View>
-            <View
-              style={{ flex: 1, height: CHART_H }}
-              onLayout={(e) => setChartW(e.nativeEvent.layout.width)}
-            >
-              <TrendLine points={points} color={color} chartW={chartW} />
-            </View>
-          </View>
-          {/* X-axis dates */}
-          <View style={{ flexDirection: 'row', paddingLeft: Y_AXIS_W, height: DATE_ROW_H, marginTop: 2 }}>
-            {points.length <= 6 ? (
-              points.map((p, i) => {
-                const frac = points.length === 1 ? 0.5 : i / (points.length - 1);
-                return (
-                  <Text
-                    key={i}
-                    style={[styles.dateLabel, {
-                      position: 'absolute',
-                      left: Y_AXIS_W + frac * chartW - 12,
-                    }]}
-                  >
-                    {shortDate(p.date)}
-                  </Text>
-                );
-              })
-            ) : (
-              <>
-                <Text style={styles.dateLabel}>{shortDate(first.date)}</Text>
-                <Text style={[styles.dateLabel, { marginLeft: 'auto' }]}>{shortDate(last.date)}</Text>
-              </>
-            )}
-          </View>
-        </View>
-      ) : (
-        <Text style={styles.sparkNote}>
-          {`Rilevamento del ${formatDate(last.date)} · Aggiungi altri referti per vedere l'evoluzione`}
-        </Text>
-      )}
-
-      {/* Footer (multiple points) */}
-      {hasTrend && (
-        <Text style={styles.sparkNote}>
-          {`${points.length} rilevamenti · ${formatDate(first.date)} → ${formatDate(last.date)}`}
-        </Text>
-      )}
     </View>
   );
 }
@@ -553,17 +594,17 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderLeftWidth: 4,
   },
-  sparkHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  sparkLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink },
+  sparkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  sparkLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink, marginRight: 8 },
   statusBadge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 99 },
   statusBadgeTxt: { fontSize: 11, fontWeight: '700' },
-  sparkValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  sparkBigValue: { fontSize: 22, fontWeight: '900' },
-  sparkUnit: { fontSize: 13, fontWeight: '500', color: colors.muted },
-  sparkTrend: { fontSize: 20, fontWeight: '800' },
-  axisLabel: { fontSize: 10, fontWeight: '600', color: '#B0B7C3' },
+  sparkValueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8 },
+  sparkBigValue: { fontSize: 20, fontWeight: '900' },
+  sparkUnit: { fontSize: 12, fontWeight: '500', color: colors.muted },
+  sparkTrend: { fontSize: 16, fontWeight: '800' },
+  axisLabel: { fontSize: 9, fontWeight: '600', color: '#B0B7C3' },
   dateLabel: { fontSize: 9, fontWeight: '600', color: '#B0B7C3' },
-  sparkNote: { fontSize: 11, color: colors.muted, marginTop: 8, lineHeight: 15 },
+  sparkNote: { fontSize: 10, color: colors.muted, marginTop: 4, lineHeight: 14 },
 
   monthHeader: {
     flexDirection: 'row',

@@ -99,10 +99,10 @@ const pet: ModeConfig = {
   tiles: [
     {
       icon: 'paw-outline',
-      title: 'Vet AI',
-      subtitle: 'Parla con il veterinario AI',
+      title: 'Assistente Vet',
+      subtitle: 'Analisi e supporto veterinario AI',
       color: '#10B981',
-      route: '/(tabs)/chat',
+      route: '/vet-ai',
     },
     {
       icon: 'restaurant-outline',
