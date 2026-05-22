@@ -106,10 +106,10 @@ const pet: ModeConfig = {
     },
     {
       icon: 'restaurant-outline',
-      title: 'Alimentazione',
-      subtitle: 'Pasti, dieta, cibi tossici',
+      title: 'Pasti & Dieta',
+      subtitle: 'Nutrizione, acqua e alimenti sicuri',
       color: '#F59E0B',
-      route: '/reminders',
+      route: '/nutrizione',
     },
     {
       icon: 'shield-checkmark-outline',
