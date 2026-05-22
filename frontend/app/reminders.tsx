@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -126,6 +127,7 @@ export default function PianoSaluteScreen() {
   const reminders = useRemindersStore((s) => s.reminders);
   const loadReminders = useRemindersStore((s) => s.load);
   const addReminder = useRemindersStore((s) => s.add);
+  const removeReminder = useRemindersStore((s) => s.remove);
   const records = useDoseStore((s) => s.records);
   const logDose = useDoseStore((s) => s.logDose);
   const getWeekAdherence = useDoseStore((s) => s.getWeekAdherence);
@@ -240,6 +242,22 @@ export default function PianoSaluteScreen() {
     setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '' });
   };
 
+  const handleDeleteMed = (title: string, ids: string[]) => {
+    Alert.alert('Elimina farmaco', `Vuoi eliminare "${title}" dal Piano Salute?`, [
+      { text: 'Annulla', style: 'cancel' },
+      {
+        text: 'Elimina',
+        style: 'destructive',
+        onPress: async () => {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          for (const id of ids) {
+            await removeReminder(id, getToken);
+          }
+        },
+      },
+    ]);
+  };
+
   const upcomingRec = upcoming ? todayRecs.find((x) => x.reminderId === upcoming.id) : null;
 
   return (
@@ -282,27 +300,36 @@ export default function PianoSaluteScreen() {
               </View>
             </View>
             <View style={styles.heroBtnRow}>
-              <Pressable
-                style={[styles.heroBtn, styles.heroBtnTaken, upcomingRec?.action === 'taken' && styles.heroBtnActive]}
-                onPress={() => handleDose(upcoming.id, 'taken', upcoming.schedule.time ?? '')}
-              >
-                <Ionicons name="checkmark" size={14} color={upcomingRec?.action === 'taken' ? '#fff' : '#0DB09E'} />
-                <Text style={[styles.heroBtnTxt, { color: upcomingRec?.action === 'taken' ? '#fff' : '#0DB09E' }]}>Presa</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.heroBtn, styles.heroBtnOutline, upcomingRec?.action === 'skipped' && styles.heroBtnActiveOutline]}
-                onPress={() => handleDose(upcoming.id, 'skipped', upcoming.schedule.time ?? '')}
-              >
-                <Ionicons name="close" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={[styles.heroBtnTxt, { color: 'rgba(255,255,255,0.9)' }]}>Salta</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.heroBtn, styles.heroBtnOutline, upcomingRec?.action === 'postponed' && styles.heroBtnActiveOutline]}
-                onPress={() => handleDose(upcoming.id, 'postponed', upcoming.schedule.time ?? '')}
-              >
-                <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.9)" />
-                <Text style={[styles.heroBtnTxt, { color: 'rgba(255,255,255,0.9)' }]}>Rimanda</Text>
-              </Pressable>
+              {(() => {
+                const taken = upcomingRec?.action === 'taken';
+                const skipped = upcomingRec?.action === 'skipped';
+                const postponed = upcomingRec?.action === 'postponed';
+                return (
+                  <>
+                    <Pressable
+                      style={[styles.heroBtn, taken ? styles.heroBtnTakenActive : styles.heroBtnTaken]}
+                      onPress={() => handleDose(upcoming.id, 'taken', upcoming.schedule.time ?? '')}
+                    >
+                      <Ionicons name="checkmark" size={14} color={taken ? '#fff' : '#0DB09E'} />
+                      <Text style={[styles.heroBtnTxt, { color: taken ? '#fff' : '#0DB09E' }]}>Presa</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.heroBtn, skipped ? styles.heroBtnSkippedActive : styles.heroBtnOutline]}
+                      onPress={() => handleDose(upcoming.id, 'skipped', upcoming.schedule.time ?? '')}
+                    >
+                      <Ionicons name="close" size={14} color="#fff" />
+                      <Text style={[styles.heroBtnTxt, { color: '#fff' }]}>{skipped ? 'Saltata' : 'Salta'}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.heroBtn, postponed ? styles.heroBtnPostponedActive : styles.heroBtnOutline]}
+                      onPress={() => handleDose(upcoming.id, 'postponed', upcoming.schedule.time ?? '')}
+                    >
+                      <Ionicons name="time-outline" size={14} color="#fff" />
+                      <Text style={[styles.heroBtnTxt, { color: '#fff' }]}>{postponed ? 'Rimandata' : 'Rimanda'}</Text>
+                    </Pressable>
+                  </>
+                );
+              })()}
             </View>
           </LinearGradient>
         ) : (
@@ -356,6 +383,13 @@ export default function PianoSaluteScreen() {
                       </Text>
                     </View>
                   )}
+                  <Pressable
+                    onPress={() => handleDeleteMed(group.title, group.reminders.map((r) => r.id))}
+                    hitSlop={8}
+                    style={styles.medDelete}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                  </Pressable>
                 </View>
               );
             })}
@@ -577,9 +611,10 @@ const styles = StyleSheet.create({
   heroBtnRow: { flexDirection: 'row', gap: 6, marginTop: 12 },
   heroBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 9, borderRadius: 12, gap: 4 },
   heroBtnTaken: { backgroundColor: '#fff' },
+  heroBtnTakenActive: { backgroundColor: '#16A34A' },
   heroBtnOutline: { backgroundColor: 'rgba(255,255,255,0.18)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.35)' },
-  heroBtnActive: { backgroundColor: '#0DB09E' },
-  heroBtnActiveOutline: { backgroundColor: 'rgba(255,255,255,0.35)', borderColor: 'rgba(255,255,255,0.8)' },
+  heroBtnSkippedActive: { backgroundColor: '#EF4444' },
+  heroBtnPostponedActive: { backgroundColor: '#F59E0B' },
   heroBtnTxt: { fontSize: 12, fontWeight: '700' },
 
   heroEmpty: {
@@ -626,6 +661,7 @@ const styles = StyleSheet.create({
   medMeta: { fontSize: 11, color: colors.muted, marginTop: 2 },
   medBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
   medBadgeTxt: { fontSize: 11, fontWeight: '700' },
+  medDelete: { padding: 2 },
 
   timelineCard: {
     backgroundColor: '#fff',
