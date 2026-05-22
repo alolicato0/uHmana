@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
@@ -84,6 +84,60 @@ function calcTimes(firstTime: string, freq: '8h' | '12h' | '24h'): string[] {
 
 const SLOT_LABELS = { morning: '🌅 Mattina', afternoon: '☀️ Pomeriggio', evening: '🌙 Sera' } as const;
 const MED_COLORS = ['#0DB09E', '#8B5CF6', '#F59E0B', '#3B82F6', '#EC4899', '#EF4444'];
+
+const ITEM_H = 52;
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = ['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'];
+
+function WheelPicker({
+  items,
+  scrollRef,
+  onIndexChange,
+}: {
+  items: string[];
+  scrollRef: { current: ScrollView | null };
+  onIndexChange: (i: number) => void;
+}) {
+  const handleEnd = (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const i = Math.round(e.nativeEvent.contentOffset.y / ITEM_H);
+    onIndexChange(Math.max(0, Math.min(items.length - 1, i)));
+  };
+  return (
+    <View style={{ height: ITEM_H * 3, width: 80, overflow: 'hidden' }}>
+      <View style={wheelStyles.highlight} />
+      <ScrollView
+        ref={scrollRef as React.RefObject<ScrollView>}
+        showsVerticalScrollIndicator={false}
+        snapToInterval={ITEM_H}
+        decelerationRate="fast"
+        contentContainerStyle={{ paddingVertical: ITEM_H }}
+        onMomentumScrollEnd={handleEnd}
+        onScrollEndDrag={handleEnd}
+      >
+        {items.map((item, i) => (
+          <View key={i} style={{ height: ITEM_H, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={wheelStyles.item}>{item}</Text>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const wheelStyles = StyleSheet.create({
+  highlight: {
+    position: 'absolute',
+    top: ITEM_H,
+    left: 4,
+    right: 4,
+    height: ITEM_H,
+    backgroundColor: '#E6FAF8',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  item: { fontSize: 34, fontWeight: '800', color: colors.ink },
+});
 const FREQ_OPTIONS: { value: '8h' | '12h' | '24h'; label: string; sublabel: string }[] = [
   { value: '24h', label: '1x/giorno', sublabel: 'ogni 24h' },
   { value: '12h', label: '2x/giorno', sublabel: 'ogni 12h' },
@@ -138,6 +192,10 @@ export default function PianoSaluteScreen() {
   const [pickH, setPickH] = useState(8);
   const [pickM, setPickM] = useState(0);
   const [intDismissed, setIntDismissed] = useState(false);
+  const hourRef = useRef<ScrollView>(null);
+  const minRef = useRef<ScrollView>(null);
+  const initH = useRef(8);
+  const initM = useRef(0);
   const [showCheck, setShowCheck] = useState(false);
   const adherenceAnim = useRef(new Animated.Value(0)).current;
 
@@ -206,10 +264,22 @@ export default function PianoSaluteScreen() {
     handleDose(rid, next, time);
   };
 
+  useEffect(() => {
+    if (!showTimePicker) return;
+    const timer = setTimeout(() => {
+      hourRef.current?.scrollTo({ y: initH.current * ITEM_H, animated: false });
+      minRef.current?.scrollTo({ y: Math.floor(initM.current / 5) * ITEM_H, animated: false });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [showTimePicker]);
+
   const openTimePicker = () => {
     const [h, m] = form.time.split(':').map(Number);
+    const roundedM = m - (m % 5);
+    initH.current = h;
+    initM.current = roundedM;
     setPickH(h);
-    setPickM(m);
+    setPickM(roundedM);
     setShowTimePicker(true);
   };
 
@@ -466,25 +536,17 @@ export default function PianoSaluteScreen() {
           <Pressable style={styles.timePickerCard} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.timePickerTitle}>Scegli orario</Text>
             <View style={styles.timePickerRow}>
-              <View style={styles.timePickerCol}>
-                <Pressable onPress={() => setPickH((h) => (h + 1) % 24)} hitSlop={10}>
-                  <Ionicons name="chevron-up" size={30} color={colors.primary} />
-                </Pressable>
-                <Text style={styles.timePickerNum}>{String(pickH).padStart(2, '0')}</Text>
-                <Pressable onPress={() => setPickH((h) => (h - 1 + 24) % 24)} hitSlop={10}>
-                  <Ionicons name="chevron-down" size={30} color={colors.primary} />
-                </Pressable>
-              </View>
+              <WheelPicker
+                items={HOURS}
+                scrollRef={hourRef}
+                onIndexChange={setPickH}
+              />
               <Text style={styles.timePickerColon}>:</Text>
-              <View style={styles.timePickerCol}>
-                <Pressable onPress={() => setPickM((m) => (m + 5) % 60)} hitSlop={10}>
-                  <Ionicons name="chevron-up" size={30} color={colors.primary} />
-                </Pressable>
-                <Text style={styles.timePickerNum}>{String(pickM).padStart(2, '0')}</Text>
-                <Pressable onPress={() => setPickM((m) => (m - 5 + 60) % 60)} hitSlop={10}>
-                  <Ionicons name="chevron-down" size={30} color={colors.primary} />
-                </Pressable>
-              </View>
+              <WheelPicker
+                items={MINUTES}
+                scrollRef={minRef}
+                onIndexChange={(i) => setPickM(i * 5)}
+              />
             </View>
             <Pressable style={styles.timePickerBtn} onPress={confirmTimePicker}>
               <Text style={styles.timePickerBtnTxt}>Conferma</Text>
@@ -747,10 +809,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   timePickerTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginBottom: 24 },
-  timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  timePickerCol: { alignItems: 'center', gap: 12 },
-  timePickerNum: { fontSize: 48, fontWeight: '800', color: colors.ink, width: 72, textAlign: 'center' },
-  timePickerColon: { fontSize: 40, fontWeight: '800', color: colors.muted, marginTop: -8 },
+  timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  timePickerColon: { fontSize: 40, fontWeight: '800', color: colors.muted },
   timePickerBtn: {
     marginTop: 28,
     backgroundColor: colors.primary,

@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -229,7 +230,6 @@ export default function ReportsScreen() {
   const [fabOpen, setFabOpen] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<ReportDoc | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [imageViewer, setImageViewer] = useState<string | null>(null);
 
   const filtered = docs.filter(
@@ -355,8 +355,6 @@ export default function ReportsScreen() {
     }
   };
 
-  const activeCategoryDocs = activeCategory ? docsInCategory(activeCategory) : [];
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['bottom']}>
       {/* AI analysis loading overlay */}
@@ -400,7 +398,7 @@ export default function ReportsScreen() {
                   <Pressable
                     key={cat.key}
                     style={styles.categoryCard}
-                    onPress={() => setActiveCategory(cat.key)}
+                    onPress={() => router.push(`/reports-category?category=${encodeURIComponent(cat.key)}`)}
                   >
                     <Text style={styles.categoryEmoji}>{cat.emoji}</Text>
                     <Text style={styles.categoryLabel} numberOfLines={2}>{cat.label}</Text>
@@ -521,58 +519,6 @@ export default function ReportsScreen() {
             </Pressable>
           </View>
         </Pressable>
-      </Modal>
-
-      {/* Category sub-screen modal */}
-      <Modal
-        visible={activeCategory !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setActiveCategory(null)}
-      >
-        <View style={styles.detailBackdrop}>
-          <View style={styles.detailSheet}>
-            <View style={styles.sheetHandle} />
-            {activeCategory && (
-              <>
-                <View style={styles.catSheetHeader}>
-                  <Text style={styles.catSheetEmoji}>
-                    {CATEGORIES.find((c) => c.key === activeCategory)?.emoji}
-                  </Text>
-                  <Text style={styles.catSheetTitle}>{activeCategory}</Text>
-                  <Pressable onPress={() => setActiveCategory(null)} hitSlop={8} style={styles.detailClose}>
-                    <Ionicons name="close" size={20} color={colors.ink} />
-                  </Pressable>
-                </View>
-                <Text style={styles.catSheetCount}>
-                  {activeCategoryDocs.length}/{MAX_PER_CATEGORY} documenti
-                </Text>
-                <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-                  {activeCategoryDocs.length === 0 ? (
-                    <View style={[styles.emptyBox, { marginTop: 20 }]}>
-                      <Text style={{ fontSize: 32 }}>📂</Text>
-                      <Text style={styles.emptyTitle}>Cartella vuota</Text>
-                      <Text style={styles.emptyText}>
-                        Carica un documento e l'AI lo classificherà automaticamente qui.
-                      </Text>
-                    </View>
-                  ) : (
-                    activeCategoryDocs.map((doc) => (
-                      <DocCard
-                        key={doc.id}
-                        doc={doc}
-                        onPress={() => {
-                          setActiveCategory(null);
-                          setTimeout(() => setSelectedDoc(doc), 300);
-                        }}
-                      />
-                    ))
-                  )}
-                </ScrollView>
-              </>
-            )}
-          </View>
-        </View>
       </Modal>
 
       {/* Document detail modal */}
@@ -892,11 +838,6 @@ const styles = StyleSheet.create({
     maxHeight: '88%',
   },
   sheetHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', alignSelf: 'center', marginBottom: 16 },
-
-  catSheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
-  catSheetEmoji: { fontSize: 26 },
-  catSheetTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: colors.ink },
-  catSheetCount: { fontSize: 12, color: colors.muted, marginBottom: 14 },
 
   detailHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 14 },
   detailName: { fontSize: 17, fontWeight: '800', color: colors.ink },

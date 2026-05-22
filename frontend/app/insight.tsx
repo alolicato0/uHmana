@@ -256,12 +256,15 @@ function localDateKey(d: Date): string {
 }
 
 const DAY_LABELS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
-const DUR_LABEL: Record<SymptomLog['duration'], string> = {
-  today: 'oggi',
-  '3days': 'qualche giorno',
-  week: 'circa una settimana',
-  longer: 'più di una settimana',
-};
+const MONTHS_IT_SHORT = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+
+function formatLogDate(iso: string): string {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (localDateKey(d) === localDateKey(new Date())) return `oggi ${hh}:${mm}`;
+  return `${d.getDate()} ${MONTHS_IT_SHORT[d.getMonth()]} ${hh}:${mm}`;
+}
 
 // Calendario sintomi navigabile per settimana, con istogramma e popup giornaliero
 function SymptomCalendar({ logs }: { logs: SymptomLog[] }) {
@@ -365,7 +368,7 @@ function SymptomCalendar({ logs }: { logs: SymptomLog[] }) {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.modalRowName}>{l.name}</Text>
                         <Text style={styles.modalRowMeta}>
-                          Intensità {l.intensity}/10 · {DUR_LABEL[l.duration]}
+                          Intensità {l.intensity}/10 · {formatLogDate(l.date)}
                         </Text>
                         {l.notes ? <Text style={styles.modalRowNotes}>{l.notes}</Text> : null}
                       </View>
