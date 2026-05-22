@@ -110,6 +110,7 @@ function WheelPicker({
         showsVerticalScrollIndicator={false}
         snapToInterval={ITEM_H}
         decelerationRate="fast"
+        nestedScrollEnabled
         contentContainerStyle={{ paddingVertical: ITEM_H }}
         onMomentumScrollEnd={handleEnd}
         onScrollEndDrag={handleEnd}
@@ -532,8 +533,9 @@ export default function PianoSaluteScreen() {
 
       {/* Time picker modal */}
       <Modal visible={showTimePicker} transparent animationType="fade" onRequestClose={() => setShowTimePicker(false)}>
-        <Pressable style={styles.timePickerBackdrop} onPress={() => setShowTimePicker(false)}>
-          <Pressable style={styles.timePickerCard} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.timePickerBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowTimePicker(false)} />
+          <View style={styles.timePickerCard}>
             <Text style={styles.timePickerTitle}>Scegli orario</Text>
             <View style={styles.timePickerRow}>
               <WheelPicker
@@ -551,8 +553,8 @@ export default function PianoSaluteScreen() {
             <Pressable style={styles.timePickerBtn} onPress={confirmTimePicker}>
               <Text style={styles.timePickerBtnTxt}>Conferma</Text>
             </Pressable>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {/* Add medication modal */}
