@@ -60,11 +60,12 @@ const STATUS_COLOR = { ok: '#16A34A', warning: '#F59E0B', critical: '#EF4444' };
 const STATUS_BG = { ok: '#DCFCE7', warning: '#FEF9C3', critical: '#FEE2E2' };
 const STATUS_ICON = { ok: '🟢', warning: '🟡', critical: '🔴' };
 
-// ─── Trend chart ──────────────────────────────────────────────────────────────
+// ─── Trend chart combinato ──────────────────────────────────────────────────
 
 type ValuePoint = { date: string; value: number; unit: string; status: ReportValue['status'] };
+type Series = { label: string; points: ValuePoint[] };
 
-function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[] }[] {
+function buildDatasets(docs: ReportDoc[]): Series[] {
   const byLabel = new Map<string, ValuePoint[]>();
   const sorted = [...docs].sort((a, b) => a.date.localeCompare(b.date));
   for (const doc of sorted) {
@@ -76,252 +77,168 @@ function buildDatasets(docs: ReportDoc[]): { label: string; points: ValuePoint[]
       byLabel.set(v.label, list);
     }
   }
-  return Array.from(byLabel.entries())
-    .sort(([, a], [, b]) => {
-      const aHasBad = a.some((p) => p.status !== 'ok') ? 1 : 0;
-      const bHasBad = b.some((p) => p.status !== 'ok') ? 1 : 0;
-      return bHasBad - aHasBad;
-    })
-    .slice(0, 5)
-    .map(([label, points]) => ({ label, points }));
+  return Array.from(byLabel.entries()).map(([label, points]) => ({ label, points }));
 }
 
 const STATUS_LABEL = { ok: 'Normale', warning: 'Attenzione', critical: 'Critico' };
-const CH = 90;        // chart plot height
-const YAXIS_W = 46;   // y-axis column width
-const GRID_LINES = 4; // horizontal grid lines count
-const PAD_V = 8;      // vertical padding inside plot
+const CH = 104;        // altezza plot (compatto)
+const GRID_LINES = 4;
+const PAD_V = 10;
+const SERIES_PALETTE = ['#3B82F6', '#8B5CF6', '#EC4899', '#0DB09E', '#F97316', '#14B8A6'];
 
 function shortDate(iso: string) {
   const [, m, d] = iso.split('-');
   return `${parseInt(d, 10)}/${parseInt(m, 10)}`;
 }
 
-function GridChart({
-  points,
-  color,
-  chartW,
-}: {
-  points: ValuePoint[];
-  color: string;
-  chartW: number;
-}) {
-  const n = points.length;
-  const nums = points.map((p) => p.value);
-  const rawMin = Math.min(...nums);
-  const rawMax = Math.max(...nums);
-  const spread = rawMax - rawMin;
-  // Add ±10% padding so line doesn't touch top/bottom; handle flat line
-  const pad = spread > 0 ? spread * 0.18 : Math.max(rawMin * 0.15, 1);
-  const domMin = rawMin - pad;
-  const domMax = rawMax + pad;
-  const domRange = domMax - domMin;
-
-  const getX = (i: number) =>
-    n === 1 ? chartW / 2 : PAD_V + (i / (n - 1)) * (chartW - PAD_V * 2);
-  const getY = (v: number) =>
-    PAD_V + (CH - PAD_V * 2) * (1 - (v - domMin) / domRange);
-
-  const coords = points.map((p, i) => ({ x: getX(i), y: getY(p.value), p }));
-
-  // Horizontal grid y-positions and their display values
-  const gridRows = Array.from({ length: GRID_LINES + 1 }, (_, i) => {
-    const frac = i / GRID_LINES;
-    return {
-      y: PAD_V + (CH - PAD_V * 2) * (1 - frac),
-      val: domMin + domRange * frac,
-    };
-  });
-
-  return (
-    <View style={{ flex: 1, height: CH }}>
-      {/* Horizontal grid lines */}
-      {gridRows.map((g, i) => (
-        <View
-          key={`h${i}`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            top: g.y,
-            height: 1,
-            backgroundColor: i === 0 || i === GRID_LINES ? '#D1D5DB' : '#E5E7EB',
-          }}
-        />
-      ))}
-
-      {/* Vertical guide lines at each data point */}
-      {coords.map((c, i) => (
-        <View
-          key={`v${i}`}
-          style={{
-            position: 'absolute',
-            left: c.x,
-            top: PAD_V,
-            width: 1,
-            height: CH - PAD_V * 2,
-            backgroundColor: '#F3F4F6',
-          }}
-        />
-      ))}
-
-      {/* Line segments */}
-      {coords.slice(0, -1).map((c, i) => {
-        const next = coords[i + 1];
-        const dx = next.x - c.x;
-        const dy = next.y - c.y;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx);
-        const mx = (c.x + next.x) / 2;
-        const my = (c.y + next.y) / 2;
-        return (
-          <View
-            key={i}
-            style={{
-              position: 'absolute',
-              left: mx - len / 2,
-              top: my - 1.5,
-              width: len,
-              height: 3,
-              borderRadius: 2,
-              backgroundColor: color,
-              transform: [{ rotateZ: `${angle}rad` }],
-            }}
-          />
-        );
-      })}
-
-      {/* Dots + value labels */}
-      {coords.map((c, i) => {
-        const isLast = i === n - 1;
-        const dotR = isLast ? 6 : 4;
-        const labelAbove = c.y > CH / 2;
-        return (
-          <View key={`d${i}`}>
-            {/* dot */}
-            <View
-              style={{
-                position: 'absolute',
-                left: c.x - dotR,
-                top: c.y - dotR,
-                width: dotR * 2,
-                height: dotR * 2,
-                borderRadius: dotR,
-                backgroundColor: color,
-                borderWidth: isLast ? 2 : 0,
-                borderColor: '#fff',
-              }}
-            />
-            {/* value label */}
-            <Text
-              style={{
-                position: 'absolute',
-                left: c.x - 20,
-                top: labelAbove ? c.y - 18 : c.y + dotR + 2,
-                width: 40,
-                textAlign: 'center',
-                fontSize: 10,
-                fontWeight: '800',
-                color,
-              }}
-            >
-              {c.p.value}
-            </Text>
-          </View>
-        );
-      })}
-    </View>
-  );
+// Colore serie: critico=rosso, attenzione=ambra, altrimenti palette per distinguere le linee
+function seriesColor(s: Series, idx: number): string {
+  const last = s.points[s.points.length - 1];
+  if (last.status === 'critical') return STATUS_COLOR.critical;
+  if (last.status === 'warning') return STATUS_COLOR.warning;
+  return SERIES_PALETTE[idx % SERIES_PALETTE.length];
 }
 
-function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
-  const [chartW, setChartW] = useState(220);
-  const nums = points.map((p) => p.value);
-  const rawMin = Math.min(...nums);
-  const rawMax = Math.max(...nums);
-  const spread = rawMax - rawMin;
-  const pad = spread > 0 ? spread * 0.18 : Math.max(rawMin * 0.15, 1);
-  const domMin = rawMin - pad;
-  const domMax = rawMax + pad;
-  const unit = points[0].unit;
-  const last = points[points.length - 1];
-  const first = points[0];
-  const hasTrend = points.length > 1;
-  const color = STATUS_COLOR[last.status];
+// Un unico grafico multi-linea: ogni serie è normalizzata sul proprio dominio
+// (le scale/unità possono differire), quindi niente asse Y numerico condiviso.
+function CombinedTrendChart({ series }: { series: Series[] }) {
+  const [chartW, setChartW] = useState(260);
+  const colorsBySeries = series.map((s, i) => seriesColor(s, i));
 
-  const trend = hasTrend
-    ? last.value > first.value ? '↑' : last.value < first.value ? '↓' : '→'
-    : '•';
+  const allDates = Array.from(new Set(series.flatMap((s) => s.points.map((p) => p.date)))).sort();
+  const n = allDates.length;
+  const getX = (date: string) => {
+    const i = allDates.indexOf(date);
+    return n <= 1 ? chartW / 2 : PAD_V + (i / (n - 1)) * (chartW - PAD_V * 2);
+  };
 
-  // 3 y-axis labels: top, mid, bottom
-  const yLabels = [domMax, (domMax + domMin) / 2, domMin].map((v) =>
-    Number.isInteger(v) ? String(Math.round(v)) : v.toFixed(1),
-  );
+  const gridRows = Array.from({ length: GRID_LINES + 1 }, (_, i) => ({
+    y: PAD_V + (CH - PAD_V * 2) * (i / GRID_LINES),
+  }));
 
   return (
-    <View style={[styles.sparkCard, { borderLeftColor: color }]}>
-      {/* Header row */}
-      <View style={styles.sparkHeader}>
-        <Text style={styles.sparkLabel} numberOfLines={1}>{label}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={[styles.sparkTrend, { color }]}>{trend}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[last.status] }]}>
-            <Text style={[styles.statusBadgeTxt, { color }]}>{STATUS_LABEL[last.status]}</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Chart area */}
-      <View style={{ flexDirection: 'row', marginTop: 10 }}>
-        {/* Y-axis labels */}
-        <View style={{ width: YAXIS_W, height: CH, justifyContent: 'space-between', alignItems: 'flex-end', paddingRight: 6, paddingVertical: PAD_V }}>
-          {yLabels.map((l, i) => (
-            <Text key={i} style={styles.axisLabel}>{l}</Text>
-          ))}
-        </View>
-        {/* Plot */}
-        <View
-          style={{ flex: 1, height: CH }}
-          onLayout={(e) => setChartW(e.nativeEvent.layout.width)}
-        >
-          <GridChart points={points} color={color} chartW={chartW} />
-        </View>
-      </View>
-
-      {/* X-axis dates */}
-      <View style={{ marginLeft: YAXIS_W, height: 16, marginTop: 3 }}>
-        {points.map((p, i) => {
-          const frac = points.length === 1 ? 0.5 : i / (points.length - 1);
-          const x = PAD_V + frac * (chartW - PAD_V * 2);
+    <View>
+      <View style={{ height: CH }} onLayout={(e) => setChartW(e.nativeEvent.layout.width)}>
+        {gridRows.map((g, i) => (
+          <View
+            key={`g${i}`}
+            style={{
+              position: 'absolute', left: 0, right: 0, top: g.y, height: 1,
+              backgroundColor: i === 0 || i === GRID_LINES ? '#D1D5DB' : '#EEF1F5',
+            }}
+          />
+        ))}
+        {allDates.map((d, i) => (
+          <View
+            key={`vg${i}`}
+            style={{ position: 'absolute', left: getX(d), top: PAD_V, width: 1, height: CH - PAD_V * 2, backgroundColor: '#F6F7F9' }}
+          />
+        ))}
+        {series.map((s, si) => {
+          const color = colorsBySeries[si];
+          const nums = s.points.map((p) => p.value);
+          const mn = Math.min(...nums);
+          const mx = Math.max(...nums);
+          const spread = mx - mn;
+          const pad = spread > 0 ? spread * 0.18 : Math.max(mn * 0.15, 1);
+          const dMin = mn - pad;
+          const range = mx + pad - dMin;
+          const getY = (v: number) => PAD_V + (CH - PAD_V * 2) * (1 - (v - dMin) / range);
+          const coords = s.points.map((p) => ({ x: getX(p.date), y: getY(p.value), p }));
           return (
-            <Text
-              key={i}
-              style={[styles.dateLabel, { position: 'absolute', left: x - 14, width: 28, textAlign: 'center' }]}
-            >
-              {shortDate(p.date)}
-            </Text>
+            <View key={s.label}>
+              {coords.slice(0, -1).map((c, i) => {
+                const nx = coords[i + 1];
+                const dx = nx.x - c.x;
+                const dy = nx.y - c.y;
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                const mxp = (c.x + nx.x) / 2;
+                const myp = (c.y + nx.y) / 2;
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      position: 'absolute', left: mxp - len / 2, top: myp - 1.25,
+                      width: len, height: 2.5, borderRadius: 2, backgroundColor: color,
+                      transform: [{ rotateZ: `${angle}rad` }],
+                    }}
+                  />
+                );
+              })}
+              {coords.map((c, i) => {
+                const isLast = i === coords.length - 1;
+                const r = isLast ? 5 : 3.5;
+                const above = c.y > CH / 2;
+                return (
+                  <View key={`d${i}`}>
+                    <View
+                      style={{
+                        position: 'absolute', left: c.x - r, top: c.y - r,
+                        width: r * 2, height: r * 2, borderRadius: r, backgroundColor: color,
+                        borderWidth: isLast ? 2 : 0, borderColor: '#fff',
+                      }}
+                    />
+                    {isLast && (
+                      <Text
+                        style={{
+                          position: 'absolute', left: c.x - 22, top: above ? c.y - 17 : c.y + r + 1,
+                          width: 44, textAlign: 'center', fontSize: 10, fontWeight: '800', color,
+                        }}
+                      >
+                        {c.p.value}
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
           );
         })}
       </View>
 
-      {/* Footer */}
-      <Text style={styles.sparkNote}>
-        {hasTrend
-          ? `${points.length} rilevamenti · ${formatDate(first.date)} → ${formatDate(last.date)}`
-          : `Solo 1 rilevamento (${formatDate(last.date)}) · Aggiungi altri referti per vedere l'evoluzione`}
-      </Text>
-
-      {/* Last value summary */}
-      <View style={styles.sparkValueRow}>
-        <Text style={[styles.sparkBigValue, { color }]}>
-          {last.value}
-          <Text style={styles.sparkUnit}> {unit}</Text>
-        </Text>
-        {hasTrend && (
-          <Text style={{ fontSize: 11, color: colors.muted }}>
-            min {Math.min(...nums)} · max {Math.max(...nums)}
+      {/* Asse X date */}
+      <View style={{ height: 14, marginTop: 2 }}>
+        {allDates.map((d, i) => (
+          <Text key={i} style={[styles.dateLabel, { position: 'absolute', left: getX(d) - 16, width: 32, textAlign: 'center' }]}>
+            {shortDate(d)}
           </Text>
-        )}
+        ))}
+      </View>
+
+      {/* Legenda */}
+      <View style={styles.legendWrap}>
+        {series.map((s, si) => {
+          const last = s.points[s.points.length - 1];
+          return (
+            <View key={s.label} style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: colorsBySeries[si] }]} />
+              <Text style={styles.legendLabel} numberOfLines={1}>{s.label}</Text>
+              <Text style={[styles.legendVal, { color: colorsBySeries[si] }]}>
+                {last.value}<Text style={styles.legendUnit}> {last.unit}</Text>
+              </Text>
+              <View style={[styles.statusBadge, { backgroundColor: STATUS_BG[last.status] }]}>
+                <Text style={[styles.statusBadgeTxt, { color: STATUS_COLOR[last.status] }]}>{STATUS_LABEL[last.status]}</Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function NormalRow({ s }: { s: Series }) {
+  const last = s.points[s.points.length - 1];
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: STATUS_COLOR.ok }]} />
+      <Text style={styles.legendLabel} numberOfLines={1}>{s.label}</Text>
+      <Text style={[styles.legendVal, { color: colors.ink }]}>
+        {last.value}<Text style={styles.legendUnit}> {last.unit}</Text>
+      </Text>
+      <View style={[styles.statusBadge, { backgroundColor: STATUS_BG.ok }]}>
+        <Text style={[styles.statusBadgeTxt, { color: STATUS_COLOR.ok }]}>Normale</Text>
       </View>
     </View>
   );
@@ -330,13 +247,35 @@ function SparkCard({ label, points }: { label: string; points: ValuePoint[] }) {
 function ValueTrendChart({ docs }: { docs: ReportDoc[] }) {
   const datasets = buildDatasets(docs);
   if (datasets.length === 0) return null;
+  const attention = datasets.filter((s) => s.points.some((p) => p.status !== 'ok')).slice(0, 6);
+  const normal = datasets.filter((s) => s.points.every((p) => p.status === 'ok'));
+
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={styles.sectionTitle}>Andamento valori AI</Text>
       <View style={{ height: 8 }} />
-      {datasets.map((ds) => (
-        <SparkCard key={ds.label} label={ds.label} points={ds.points} />
-      ))}
+
+      {attention.length > 0 ? (
+        <View style={styles.combinedCard}>
+          <Text style={styles.combinedTitle}>
+            {attention.length === 1 ? 'Valore da monitorare' : `${attention.length} valori da monitorare`}
+          </Text>
+          <CombinedTrendChart series={attention} />
+        </View>
+      ) : (
+        <View style={[styles.combinedCard, { paddingVertical: 16 }]}>
+          <Text style={styles.allOkText}>🟢 Tutti i valori rilevati sono nella norma.</Text>
+        </View>
+      )}
+
+      {normal.length > 0 && (
+        <View style={styles.normalCard}>
+          <Text style={styles.normalCardTitle}>Altri valori nella norma</Text>
+          {normal.map((s) => (
+            <NormalRow key={s.label} s={s} />
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -356,10 +295,8 @@ export default function ReportsCategoryScreen() {
   const catDocs = docs.filter((d) => d.category === category);
   const groups = groupByMonth(catDocs);
 
-  // Mese più recente aperto di default, gli altri chiusi.
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(groups[0] ? [groups[0].monthKey] : []),
-  );
+  // Tutti i mesi chiusi di default (anche i futuri).
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const toggleMonth = (key: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded((prev) => {
@@ -584,27 +521,38 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '800', color: colors.ink },
   headerCount: { fontSize: 11, color: colors.muted, marginTop: 1 },
 
-  // Spark chart
-  sparkCard: {
+  // Grafico combinato
+  combinedCard: {
     backgroundColor: '#fff',
     borderRadius: radii.md,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    borderLeftWidth: 4,
   },
-  sparkHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
-  sparkLabel: { flex: 1, fontSize: 13, fontWeight: '700', color: colors.ink, marginRight: 8 },
+  combinedTitle: { fontSize: 13, fontWeight: '700', color: colors.ink, marginBottom: 10 },
+  allOkText: { fontSize: 13, fontWeight: '600', color: '#16A34A', textAlign: 'center' },
   statusBadge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 99 },
-  statusBadgeTxt: { fontSize: 11, fontWeight: '700' },
-  sparkValueRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 8 },
-  sparkBigValue: { fontSize: 20, fontWeight: '900' },
-  sparkUnit: { fontSize: 12, fontWeight: '500', color: colors.muted },
-  sparkTrend: { fontSize: 16, fontWeight: '800' },
-  axisLabel: { fontSize: 9, fontWeight: '600', color: '#B0B7C3' },
+  statusBadgeTxt: { fontSize: 10, fontWeight: '700' },
   dateLabel: { fontSize: 9, fontWeight: '600', color: '#B0B7C3' },
-  sparkNote: { fontSize: 10, color: colors.muted, marginTop: 4, lineHeight: 14 },
+
+  legendWrap: { marginTop: 12, gap: 8 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendDot: { width: 9, height: 9, borderRadius: 5 },
+  legendLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.ink },
+  legendVal: { fontSize: 13, fontWeight: '800' },
+  legendUnit: { fontSize: 10, fontWeight: '500', color: colors.muted },
+
+  normalCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.md,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  normalCardTitle: { fontSize: 12, fontWeight: '700', color: colors.muted, marginBottom: 2 },
 
   monthHeader: {
     flexDirection: 'row',

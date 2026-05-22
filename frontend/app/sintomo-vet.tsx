@@ -91,9 +91,10 @@ export default function SintomoVetScreen() {
     const prefill = parts.join('. ');
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-    router.push({
-      pathname: '/chat-vet',
-      params: { prefill: encodeURIComponent(prefill) },
+    // Torna ad Assistente Vet e apri la chat (pop-up) con il prefill
+    router.replace({
+      pathname: '/vet-ai',
+      params: { openChat: '1', prefill: encodeURIComponent(prefill) },
     } as never);
   };
 

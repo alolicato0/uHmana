@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   LayoutAnimation,
@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useProfileStore } from '../src/store/profile';
 import { useTimelineStore } from '../src/store/timeline';
 import { getFrequentSymptoms, useVetStore } from '../src/store/vetStore';
+import { VetChatModal } from '../src/components/VetChatModal';
 import { radii } from '../src/theme';
 
 if (Platform.OS === 'android') {
@@ -43,6 +44,30 @@ export default function VetAiScreen() {
   const [selectedChips, setSelectedChips] = useState<string[]>([]);
   const [addingMonitor, setAddingMonitor] = useState(false);
   const [newMonitorLabel, setNewMonitorLabel] = useState('');
+
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatPrefill, setChatPrefill] = useState<string | undefined>();
+
+  // Apertura chat dalla pagina sintomi (param openChat + prefill)
+  const params = useLocalSearchParams<{ openChat?: string; prefill?: string }>();
+  const handledParam = useRef<string | null>(null);
+  useEffect(() => {
+    if (params.openChat === '1') {
+      const pre = params.prefill ? decodeURIComponent(params.prefill) : undefined;
+      const sig = `${params.openChat}-${params.prefill ?? ''}`;
+      if (handledParam.current !== sig) {
+        handledParam.current = sig;
+        setChatPrefill(pre);
+        setChatOpen(true);
+      }
+    }
+  }, [params.openChat, params.prefill]);
+
+  const openChat = (prefill?: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setChatPrefill(prefill);
+    setChatOpen(true);
+  };
 
   const profiles = useProfileStore((s) => s.profiles);
   const petProfile = profiles.find((p) => p.kind === 'pet');
@@ -218,14 +243,8 @@ export default function VetAiScreen() {
             <Ionicons name="chevron-forward" size={18} color={MUTED} />
           </Pressable>
 
-          {/* Fai una domanda → chat-vet */}
-          <Pressable
-            style={styles.quickBtn}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push('/chat-vet' as never);
-            }}
-          >
+          {/* Fai una domanda → chat vet (pop-up) */}
+          <Pressable style={styles.quickBtn} onPress={() => openChat()}>
             <LinearGradient colors={['#F0FDF4', '#DCFCE7']} style={styles.quickBtnIcon}>
               <Text style={{ fontSize: 24 }}>❓</Text>
             </LinearGradient>
@@ -286,11 +305,7 @@ export default function VetAiScreen() {
           <View style={styles.insightHeader}>
             <Text style={{ fontSize: 16 }}>🧠</Text>
             <Text style={styles.insightTitle}>Insight Vet</Text>
-            <Pressable
-              hitSlop={8}
-              style={styles.insightChatBtn}
-              onPress={() => router.push('/chat-vet' as never)}
-            >
+            <Pressable hitSlop={8} style={styles.insightChatBtn} onPress={() => openChat()}>
               <Text style={styles.insightChatBtnTxt}>Apri chat →</Text>
             </Pressable>
           </View>
@@ -368,16 +383,7 @@ export default function VetAiScreen() {
                   </Pressable>
                   <Pressable
                     style={styles.monitorBtn}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/chat-vet',
-                        params: {
-                          prefill: encodeURIComponent(
-                            `${petName}: ${item.label.toLowerCase()}. Cosa devo fare?`,
-                          ),
-                        },
-                      } as never)
-                    }
+                    onPress={() => openChat(`${petName}: ${item.label.toLowerCase()}. Cosa devo fare?`)}
                   >
                     <Text style={styles.monitorBtnTxt}>Chiedi AI</Text>
                   </Pressable>
@@ -396,11 +402,7 @@ export default function VetAiScreen() {
             <Text style={styles.sectionTitle}>Ultime domande al Vet</Text>
             <View style={{ height: 10 }} />
             {lastConsultations.map((m) => (
-              <Pressable
-                key={m.id}
-                style={styles.consultRow}
-                onPress={() => router.push('/chat-vet' as never)}
-              >
+              <Pressable key={m.id} style={styles.consultRow} onPress={() => openChat()}>
                 <View style={styles.consultIcon}>
                   <Ionicons name="chatbubble-ellipses-outline" size={16} color={TEAL} />
                 </View>
@@ -441,10 +443,7 @@ export default function VetAiScreen() {
               <Text style={{ fontSize: 16 }}>💉</Text>
               <Text style={styles.actionPillTxt}>Vaccini</Text>
             </Pressable>
-            <Pressable
-              style={[styles.actionPill, { backgroundColor: TEAL }]}
-              onPress={() => router.push('/chat-vet' as never)}
-            >
+            <Pressable style={[styles.actionPill, { backgroundColor: TEAL }]} onPress={() => openChat()}>
               <Ionicons name="chatbubble-ellipses" size={16} color="#fff" />
               <Text style={[styles.actionPillTxt, { color: '#fff' }]}>Chat Vet</Text>
             </Pressable>
@@ -457,6 +456,13 @@ export default function VetAiScreen() {
           medico veterinario.
         </Text>
       </ScrollView>
+
+      <VetChatModal
+        visible={chatOpen}
+        onClose={() => setChatOpen(false)}
+        petName={petName}
+        prefill={chatPrefill}
+      />
     </SafeAreaView>
   );
 }
