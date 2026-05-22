@@ -1,7 +1,8 @@
 import { useAuth } from '../../src/context/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useRef, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,9 +26,14 @@ import type { ChatAttachment, ChatMessage } from '../../src/types';
 export default function ChatScreen() {
   const { getToken } = useAuth();
   const { messages, sending, error, send, clear } = useChatStore();
+  const { q } = useLocalSearchParams<{ q?: string }>();
   const [text, setText] = useState('');
   const [pending, setPending] = useState<ChatAttachment[]>([]);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  useEffect(() => {
+    if (q) setText(decodeURIComponent(q));
+  }, [q]);
 
   const pickImage = async () => {
     try {
