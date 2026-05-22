@@ -1,7 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -228,6 +230,7 @@ export default function ReportsScreen() {
   const [selectedDoc, setSelectedDoc] = useState<ReportDoc | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [imageViewer, setImageViewer] = useState<string | null>(null);
 
   const filtered = docs.filter(
     (d) =>
@@ -589,6 +592,30 @@ export default function ReportsScreen() {
                   </Pressable>
                 </View>
 
+                {/* Allegato */}
+                {selectedDoc.fileUri && (
+                  selectedDoc.type === 'image' ? (
+                    <Pressable style={styles.attachmentImageWrap} onPress={() => setImageViewer(selectedDoc.fileUri!)}>
+                      <Image source={{ uri: selectedDoc.fileUri }} style={styles.attachmentImage} contentFit="cover" />
+                      <View style={styles.attachmentZoom}>
+                        <Ionicons name="expand-outline" size={16} color="#fff" />
+                      </View>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={styles.attachmentPdf}
+                      onPress={() => selectedDoc.fileUri && Linking.openURL(selectedDoc.fileUri).catch(() => Alert.alert('PDF', 'Impossibile aprire il file.'))}
+                    >
+                      <Ionicons name="document-text" size={28} color="#3B82F6" />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.attachmentPdfName} numberOfLines={1}>{selectedDoc.name}</Text>
+                        <Text style={styles.attachmentPdfSub}>Tocca per aprire il PDF</Text>
+                      </View>
+                      <Ionicons name="open-outline" size={18} color={colors.muted} />
+                    </Pressable>
+                  )
+                )}
+
                 <View style={styles.aiSummaryBox}>
                   <View style={styles.aiSummaryHeader}>
                     <Text style={{ fontSize: 16 }}>🧠</Text>
@@ -659,6 +686,16 @@ export default function ReportsScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Fullscreen image viewer */}
+      <Modal visible={imageViewer !== null} transparent animationType="fade" onRequestClose={() => setImageViewer(null)}>
+        <Pressable style={styles.viewerBackdrop} onPress={() => setImageViewer(null)}>
+          {imageViewer && <Image source={{ uri: imageViewer }} style={styles.viewerImage} contentFit="contain" />}
+          <Pressable style={styles.viewerClose} onPress={() => setImageViewer(null)} hitSlop={10}>
+            <Ionicons name="close" size={26} color="#fff" />
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -872,6 +909,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+
+  attachmentImageWrap: {
+    height: 180,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    marginBottom: 14,
+    backgroundColor: '#F3F4F6',
+  },
+  attachmentImage: { width: '100%', height: '100%' },
+  attachmentZoom: {
+    position: 'absolute',
+    right: 8,
+    bottom: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 14,
+    padding: 6,
+  },
+  attachmentPdf: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#EFF6FF',
+    borderRadius: radii.md,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  attachmentPdfName: { fontSize: 14, fontWeight: '700', color: colors.ink },
+  attachmentPdfSub: { fontSize: 11, color: colors.muted, marginTop: 2 },
+
+  viewerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
+  viewerImage: { width: '100%', height: '80%' },
+  viewerClose: { position: 'absolute', top: 50, right: 20 },
 
   aiSummaryBox: {
     backgroundColor: '#F0FDF4',

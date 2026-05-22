@@ -83,6 +83,15 @@ function localDateKey(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const MONTHS_IT = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+function formatLogDate(iso: string, todayMode: boolean): string {
+  const d = new Date(iso);
+  if (todayMode) {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  return `${d.getDate()} ${MONTHS_IT[d.getMonth()]}`;
+}
+
 function computeWeekTrend(logs: SymptomLog[]): { value: number; dayLabel: string; isToday: boolean }[] {
   // Settimana fissa Lunedì → Domenica; oggi cade nella sua posizione reale.
   const FIXED_LABELS = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
@@ -126,6 +135,8 @@ export default function SintomiScreen() {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [wellnessOpen, setWellnessOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [expandedToday, setExpandedToday] = useState(true);
+  const [expandedRecent, setExpandedRecent] = useState(false);
 
   // Selectors reattivi: si ri-renderizza quando logs o wellness cambiano
   const logs = useSymptomsStore((s) => s.logs);
@@ -135,6 +146,10 @@ export default function SintomiScreen() {
   const score = computeHealthScore(logs, wellness);
   const trend = computeWeekTrend(logs);
   const recent = logs.slice(0, 6);
+
+  const todayKey = localDateKey(new Date());
+  const todayLogs = logs.filter((l) => localDateKey(new Date(l.date)) === todayKey);
+  const recentLogs = logs.filter((l) => localDateKey(new Date(l.date)) !== todayKey).slice(0, 30);
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (log: SymptomLog) => { setMenuFor(null); setEditing(log); setModalOpen(true); };
@@ -153,30 +168,65 @@ export default function SintomiScreen() {
         </View>
       </View>
 
-      <View style={styles.body}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={{ paddingBottom: 90 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* HERO compatto */}
         <HealthScoreCard score={score} wellness={wellness} />
 
-        {/* SINTOMI + add */}
+        {/* SINTOMI ODIERNI */}
         <View style={styles.rowBetween}>
-          <Text style={styles.sectionTitle}>Sintomi recenti</Text>
+          <Pressable onPress={() => setExpandedToday((v) => !v)} style={styles.sectionToggle} hitSlop={6}>
+            <Text style={styles.sectionTitle}>Sintomi odierni</Text>
+            {todayLogs.length > 0 && (
+              <View style={styles.countBadge}><Text style={styles.countBadgeTxt}>{todayLogs.length}</Text></View>
+            )}
+            <Ionicons name={expandedToday ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+          </Pressable>
           <Pressable onPress={openAdd} style={styles.addInline}>
             <Ionicons name="add" size={16} color="#fff" />
             <Text style={styles.addInlineText}>Registra</Text>
           </Pressable>
         </View>
 
-        {recent.length === 0 ? (
-          <Pressable onPress={openAdd} style={styles.emptyCard}>
-            <Text style={{ fontSize: 26 }}>🩺</Text>
-            <Text style={styles.emptyText}>Nessun sintomo registrato.{'\n'}Tocca per aggiungerne uno.</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.symGrid}>
-            {recent.map((l) => (
-              <SymptomCard key={l.id} log={l} onMenu={() => setMenuFor(l.id)} />
-            ))}
-          </View>
+        {expandedToday && (
+          todayLogs.length === 0 ? (
+            <Pressable onPress={openAdd} style={styles.emptyCard}>
+              <Text style={{ fontSize: 22 }}>🩺</Text>
+              <Text style={styles.emptyText}>Nessun sintomo oggi.{'\n'}Tocca per aggiungerne uno.</Text>
+            </Pressable>
+          ) : (
+            <View style={styles.symGrid}>
+              {todayLogs.map((l) => (
+                <SymptomCard key={l.id} log={l} todayMode onMenu={() => setMenuFor(l.id)} />
+              ))}
+            </View>
+          )
+        )}
+
+        {/* SINTOMI RECENTI (giorni precedenti) */}
+        <Pressable onPress={() => setExpandedRecent((v) => !v)} style={[styles.sectionToggle, { marginTop: 16, marginBottom: 8 }]} hitSlop={6}>
+          <Text style={styles.sectionTitle}>Sintomi recenti</Text>
+          {recentLogs.length > 0 && (
+            <View style={styles.countBadge}><Text style={styles.countBadgeTxt}>{recentLogs.length}</Text></View>
+          )}
+          <Ionicons name={expandedRecent ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+        </Pressable>
+
+        {expandedRecent && (
+          recentLogs.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Nessun sintomo dei giorni precedenti.</Text>
+            </View>
+          ) : (
+            <View style={styles.symGrid}>
+              {recentLogs.map((l) => (
+                <SymptomCard key={l.id} log={l} todayMode={false} onMenu={() => setMenuFor(l.id)} />
+              ))}
+            </View>
+          )
         )}
 
         {/* BENESSERE compatto */}
@@ -239,7 +289,7 @@ export default function SintomiScreen() {
             </Text>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
 
       {/* FAB — apre modal chat inline */}
       <Pressable onPress={() => setChatOpen(true)} style={styles.fab}>
@@ -334,14 +384,14 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 
 // ─── Symptom card ─────────────────────────────────────────────────────────────
 
-function SymptomCard({ log, onMenu }: { log: SymptomLog; onMenu: () => void }) {
+function SymptomCard({ log, onMenu, todayMode }: { log: SymptomLog; onMenu: () => void; todayMode: boolean }) {
   return (
     <View style={styles.symCard}>
       <Text style={{ fontSize: 22 }}>{log.emoji}</Text>
       <View style={{ flex: 1, marginLeft: 8 }}>
         <Text style={styles.symName} numberOfLines={1}>{log.name}</Text>
         <Text style={[styles.symStatus, { color: intensityColor(log.intensity) }]}>
-          {intensityLabel(log.intensity)}
+          {intensityLabel(log.intensity)} · {formatLogDate(log.date, todayMode)}
         </Text>
       </View>
       <Pressable onPress={onMenu} hitSlop={8} style={styles.dots}>
@@ -820,6 +870,17 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 15, fontWeight: '700', color: colors.ink },
   linkText: { color: '#0DB09E', fontWeight: '600', fontSize: 13 },
+  sectionToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  countBadge: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 10,
+    backgroundColor: '#E6FAF8',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countBadgeTxt: { fontSize: 11, fontWeight: '700', color: '#0DB09E' },
 
   addInline: {
     flexDirection: 'row',
