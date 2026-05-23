@@ -113,10 +113,10 @@ const pet: ModeConfig = {
     },
     {
       icon: 'shield-checkmark-outline',
-      title: 'Vaccini',
-      subtitle: 'Scadenze e richiami',
+      title: 'Prevenzione',
+      subtitle: 'Vaccini, controlli e protezione',
       color: '#5B7CFA',
-      route: '/reminders',
+      route: '/prevenzione',
     },
     {
       icon: 'happy-outline',
