@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/config/modeConfig';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePreventionStore } from '../../src/store/prevention';
 import { useProfileStore } from '../../src/store/profile';
 import { useRemindersStore } from '../../src/store/reminders';
 import { computeHealthScore, useSymptomsStore } from '../../src/store/symptoms';
@@ -20,7 +21,34 @@ export default function HomeScreen() {
   const mode = getMode(activeKind);
 
   const reminders = useRemindersStore((s) => s.reminders);
-  const upcoming = reminders.filter((r) => r.enabled).slice(0, 3);
+  const vaccines = usePreventionStore((s) => s.vaccines);
+  const antis = usePreventionStore((s) => s.antiparasitics);
+  const checks = usePreventionStore((s) => s.checks);
+
+  const upcoming: { id: string; title: string; time: string }[] =
+    activeKind === 'pet'
+      ? (() => {
+          const out: { id: string; title: string; iso: string; type: string }[] = [];
+          vaccines.forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, title: v.name, iso: v.nextDate, type: 'Vaccino' }));
+          antis.forEach((a) => out.push({ id: `a_${a.id}`, title: a.name, iso: a.nextDate, type: 'Antiparassitario' }));
+          checks.forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, title: c.name, iso: c.nextDate, type: 'Controllo' }));
+          return out
+            .sort((x, y) => x.iso.localeCompare(y.iso))
+            .slice(0, 3)
+            .map((it) => {
+              const [y, m, d] = it.iso.split('-').map(Number);
+              const target = new Date(y, m - 1, d);
+              const now = new Date();
+              now.setHours(0, 0, 0, 0);
+              const days = Math.round((target.getTime() - now.getTime()) / 86400000);
+              const when = days < 0 ? `scaduto ${Math.abs(days)}gg fa` : days === 0 ? 'oggi' : days === 1 ? 'domani' : `tra ${days}gg`;
+              return { id: it.id, title: `${it.title} · ${it.type}`, time: when };
+            });
+        })()
+      : reminders
+          .filter((r) => r.enabled)
+          .slice(0, 3)
+          .map((r) => ({ id: r.id, title: r.title, time: r.schedule.time ?? r.schedule.kind }));
 
   const firstName = user?.name?.split(' ')[0] ?? profile?.name?.split(' ')[0] ?? '';
 
@@ -32,7 +60,7 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{mode.greeting(firstName)}</Text>
             <Text style={styles.subtitle}>{mode.subtitle}</Text>
           </View>
-          <Pressable onPress={() => router.push(activeKind === 'pet' ? '/prevenzione' : '/reminders')}>
+          <Pressable onPress={() => router.push('/notifications')}>
             <Ionicons name="notifications-outline" size={26} color={colors.ink} />
           </Pressable>
         </View>
@@ -60,7 +88,7 @@ export default function HomeScreen() {
           <Text style={styles.emptyText}>{mode.emptyUpcoming}</Text>
         ) : (
           upcoming.map((r) => (
-            <ReminderRow key={r.id} title={r.title} time={r.schedule.time ?? r.schedule.kind} />
+            <ReminderRow key={r.id} title={r.title} time={r.time} />
           ))
         )}
       </ScrollView>

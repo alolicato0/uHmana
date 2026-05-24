@@ -24,8 +24,17 @@ export default function RootLayout() {
   useEffect(() => {
     void (async () => {
       const granted = await setupNotifications();
-      if (granted) {
+      if (!granted) return;
+      const sync = () => {
         void usePreventionStore.getState().syncNotifications();
+      };
+      if (usePreventionStore.persist.hasHydrated()) {
+        sync();
+      } else {
+        const unsub = usePreventionStore.persist.onFinishHydration(() => {
+          sync();
+          unsub();
+        });
       }
     })();
     void applyOtaIfAvailable();
@@ -46,6 +55,7 @@ export default function RootLayout() {
           <Stack.Screen name="medical-record" options={{ headerShown: true, title: 'I miei dati' }} />
           <Stack.Screen name="reports" options={{ headerShown: true, title: 'Referti' }} />
           <Stack.Screen name="reminders" options={{ headerShown: true, title: 'Piano Salute' }} />
+          <Stack.Screen name="notifications" options={{ headerShown: false }} />
           <Stack.Screen name="sintomi" options={{ headerShown: false }} />
           <Stack.Screen name="insight" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: true, title: 'Impostazioni' }} />

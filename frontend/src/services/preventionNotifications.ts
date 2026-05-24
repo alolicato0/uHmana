@@ -72,6 +72,19 @@ async function scheduleItem(
   );
 }
 
+export async function scheduleTestNotification(): Promise<void> {
+  const channelId = Platform.OS === 'android' ? CHANNEL_ID : undefined;
+  await Notifications.scheduleNotificationAsync({
+    identifier: `${PREFIX}test_${Date.now()}`,
+    content: { title: '🔔 Test notifica', body: 'Se vedi questo, le notifiche funzionano correttamente.', sound: 'default' },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 10,
+      channelId,
+    },
+  });
+}
+
 export async function rescheduleAllPrevention(
   vaccines: Vaccine[],
   antiparasitics: Antiparasitic[],
