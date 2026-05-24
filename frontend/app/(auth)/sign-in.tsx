@@ -160,6 +160,9 @@ export default function SignInScreen() {
         </View>
 
         <Text style={styles.version}>{VERSION_STRING}</Text>
+        <Text style={[styles.version, { marginTop: 4 }]}>
+          GoogleID: {GOOGLE_WEB_CLIENT_ID ? `OK (${GOOGLE_WEB_CLIENT_ID.slice(0, 12)}…)` : 'MANCANTE'}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );
