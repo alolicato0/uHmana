@@ -12,6 +12,7 @@ export interface SymptomLog {
   duration: SymptomDuration;
   date: string; // ISO
   notes: string;
+  memberId?: string;
 }
 
 export interface DailyWellness {
@@ -21,6 +22,7 @@ export interface DailyWellness {
   energy: number;    // 0-100
   mood: number;      // 0-100
   stress: number;    // 0-100 — livello di Relax/Calma (100 = massimo relax)
+  memberId?: string;
 }
 
 interface SymptomsState {

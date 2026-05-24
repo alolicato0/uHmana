@@ -11,6 +11,7 @@ export interface Vaccine {
   lot?: string;
   vet?: string;
   notes?: string;
+  memberId?: string;
 }
 
 export interface Antiparasitic {
@@ -20,6 +21,7 @@ export interface Antiparasitic {
   dateApplied: string;
   nextDate: string;
   notes?: string;
+  memberId?: string;
 }
 
 export interface PreventiveCheck {
@@ -29,6 +31,7 @@ export interface PreventiveCheck {
   nextDate?: string;
   vet?: string;
   notes?: string;
+  memberId?: string;
 }
 
 interface PreventionState {

@@ -14,8 +14,12 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MemberPickerModal } from '../src/components/MemberPickerModal';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { SectionChatModal } from '../src/components/SectionChatModal';
 import { VetChatModal } from '../src/components/VetChatModal';
+import { useMemberPicker } from '../src/hooks/useMemberPicker';
+import { useMembersStore } from '../src/store/members';
 import { useProfileStore } from '../src/store/profile';
 import {
   usePetActivityStore,
@@ -140,9 +144,11 @@ function StatusModal({
   visible: boolean;
   onClose: () => void;
 }) {
+  const activePetId = useMembersStore((s) => s.activePetId);
   const getTodayStatus = usePetActivityStore((s) => s.getTodayStatus);
   const setTodayStatus = usePetActivityStore((s) => s.setTodayStatus);
-  const current = getTodayStatus();
+  const current = getTodayStatus(activePetId ?? undefined);
+  const { pickMember, modalProps: pickerProps } = useMemberPicker('pet');
 
   const [energia, setEnergia] = useState<EnergiaLevel>(current?.energia ?? 'media');
   const [sonno, setSonno] = useState<SonnoLevel>(current?.sonno ?? 'regolare');
@@ -150,9 +156,11 @@ function StatusModal({
   const [attivita, setAttivita] = useState<AttivitaLevel>(current?.attivita ?? 'media');
   const [idratazione, setIdratazione] = useState<IdratLevel>(current?.idratazione ?? 'ok');
 
-  const save = () => {
+  const save = async () => {
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setTodayStatus({ energia, sonno, appetito, attivita, idratazione });
+    setTodayStatus({ energia, sonno, appetito, attivita, idratazione }, picked.id ?? undefined);
     onClose();
   };
 
@@ -216,12 +224,14 @@ function StatusModal({
       <Pressable style={[s.saveBtn, { backgroundColor: EMERALD, marginTop: 24 }]} onPress={save}>
         <Text style={s.saveBtnText}>Salva stato</Text>
       </Pressable>
+      <MemberPickerModal {...pickerProps} accent={EMERALD} />
     </ModalSheet>
   );
 }
 
 function WalkModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const addActivity = usePetActivityStore((s) => s.addActivity);
+  const activePetId = useMembersStore((s) => s.activePetId);
   const [duration, setDuration] = useState(30);
   const [note, setNote] = useState('');
 
@@ -234,6 +244,7 @@ function WalkModal({ visible, onClose }: { visible: boolean; onClose: () => void
       date: new Date().toISOString(),
       durationMin: duration,
       note: note.trim() || undefined,
+      memberId: activePetId ?? undefined,
     });
     setNote('');
     onClose();
@@ -275,6 +286,7 @@ function WalkModal({ visible, onClose }: { visible: boolean; onClose: () => void
 function SleepModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const addActivity = usePetActivityStore((s) => s.addActivity);
   const addMood = usePetActivityStore((s) => s.addMood);
+  const activePetId = useMembersStore((s) => s.activePetId);
   const [hours, setHours] = useState(8);
   const [quality, setQuality] = useState<SonnoLevel>('regolare');
   const hourOptions = [4, 6, 8, 10, 12];
@@ -286,6 +298,7 @@ function SleepModal({ visible, onClose }: { visible: boolean; onClose: () => voi
       date: new Date().toISOString(),
       durationMin: hours * 60,
       note: `Sonno ${quality}`,
+      memberId: activePetId ?? undefined,
     });
     const moodMap: Record<SonnoLevel, { level: MoodLevel; emoji: string }> = {
       scarso: { level: 'triste', emoji: '😢' },
@@ -293,7 +306,13 @@ function SleepModal({ visible, onClose }: { visible: boolean; onClose: () => voi
       ottimo: { level: 'felice', emoji: '😄' },
     };
     const m = moodMap[quality];
-    addMood({ level: m.level, emoji: m.emoji, date: todayStr(), note: `Dopo ${hours}h di sonno` });
+    addMood({
+      level: m.level,
+      emoji: m.emoji,
+      date: todayStr(),
+      note: `Dopo ${hours}h di sonno`,
+      memberId: activePetId ?? undefined,
+    });
     onClose();
   };
 
@@ -333,6 +352,7 @@ function SleepModal({ visible, onClose }: { visible: boolean; onClose: () => voi
 
 function PlayModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const addActivity = usePetActivityStore((s) => s.addActivity);
+  const activePetId = useMembersStore((s) => s.activePetId);
   const [duration, setDuration] = useState(20);
   const [note, setNote] = useState('');
   const durations = [10, 20, 30, 45, 60];
@@ -344,6 +364,7 @@ function PlayModal({ visible, onClose }: { visible: boolean; onClose: () => void
       date: new Date().toISOString(),
       durationMin: duration,
       note: note.trim() || undefined,
+      memberId: activePetId ?? undefined,
     });
     setNote('');
     onClose();
@@ -384,6 +405,7 @@ function PlayModal({ visible, onClose }: { visible: boolean; onClose: () => void
 
 function BehaviorNoteModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const addMood = usePetActivityStore((s) => s.addMood);
+  const activePetId = useMembersStore((s) => s.activePetId);
   const [note, setNote] = useState('');
   const [level, setLevel] = useState<MoodLevel>('normale');
 
@@ -402,6 +424,7 @@ function BehaviorNoteModal({ visible, onClose }: { visible: boolean; onClose: ()
       emoji: selected.emoji,
       date: todayStr(),
       note: note.trim() || undefined,
+      memberId: activePetId ?? undefined,
     });
     setNote('');
     onClose();
@@ -442,13 +465,14 @@ function BehaviorNoteModal({ visible, onClose }: { visible: boolean; onClose: ()
 
 function BehaviorFlagModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const addBehaviorFlag = usePetActivityStore((s) => s.addBehaviorFlag);
+  const activePetId = useMembersStore((s) => s.activePetId);
   const [label, setLabel] = useState('');
   const [note, setNote] = useState('');
 
   const save = () => {
     if (!label.trim()) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addBehaviorFlag(label.trim(), note.trim() || undefined);
+    addBehaviorFlag(label.trim(), note.trim() || undefined, activePetId ?? undefined);
     setLabel('');
     setNote('');
     onClose();
@@ -498,9 +522,10 @@ export default function ComportamentoScreen() {
   const removeBehaviorFlag = usePetActivityStore((s) => s.removeBehaviorFlag);
   const setAiInsight = usePetActivityStore((s) => s.setAiInsight);
 
-  const todayStatus = getTodayStatus();
-  const weekActivity = getWeekActivity();
-  const recentMoods = getRecentMoods(5);
+  const activePetId = useMembersStore((s) => s.activePetId);
+  const todayStatus = getTodayStatus(activePetId ?? undefined);
+  const weekActivity = getWeekActivity(activePetId ?? undefined);
+  const recentMoods = getRecentMoods(5, activePetId ?? undefined);
 
   const [statusModal, setStatusModal] = useState(false);
   const [walkModal, setWalkModal] = useState(false);
@@ -565,7 +590,7 @@ export default function ComportamentoScreen() {
     lines.push(
       `Attività settimana: ${weekActivity.map((d) => `${d.date}=${d.totalMin}min`).join(', ')}`,
     );
-    const moods = getRecentMoods(10);
+    const moods = getRecentMoods(10, activePetId ?? undefined);
     if (moods.length > 0) {
       lines.push(`Umore recente: ${moods.map((m) => `${m.date} ${m.emoji} ${m.level}${m.note ? ' - ' + m.note : ''}`).join('; ')}`);
     }
@@ -600,6 +625,7 @@ export default function ComportamentoScreen() {
               Energia, comportamento e benessere di {petName}
             </Text>
           </View>
+          <MemberSwitcher kind="pet" accent={EMERALD} variant="compact" />
         </View>
 
         <View style={{ paddingHorizontal: 16, gap: 20 }}>

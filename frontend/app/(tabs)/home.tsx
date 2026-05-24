@@ -1,11 +1,20 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AddMemberModal, MemberSwitcher } from '../../src/components/MemberSwitcher';
 import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/config/modeConfig';
 import { useAuth } from '../../src/context/AuthContext';
+import {
+  memberEmoji,
+  useMembersStore,
+  type HumanMember,
+  type MemberKind,
+  type PetMember,
+} from '../../src/store/members';
 import { useNotifSeenStore } from '../../src/store/notifSeen';
 import { usePreventionStore } from '../../src/store/prevention';
 import { useProfileStore } from '../../src/store/profile';
@@ -87,8 +96,14 @@ export default function HomeScreen() {
         <View style={{ height: 20 }} />
         <KindToggle kind={activeKind} onChange={setKind} accent={mode.primary} />
 
+        <View style={{ height: 14 }} />
+        <MemberSwitcher kind={activeKind} accent={mode.primary} variant="header" />
+
         <View style={{ height: 20 }} />
         <HeroCard mode={mode} kind={activeKind} />
+
+        <View style={{ height: 20 }} />
+        <FamilySection kind={activeKind} accent={mode.primary} />
 
         <View style={{ height: 20 }} />
         <View style={styles.grid}>
@@ -101,17 +116,136 @@ export default function HomeScreen() {
         <EmergencyCta onPress={() => router.push('/emergency')} />
 
         <View style={{ height: 24 }} />
-        <Text style={styles.sectionTitle}>{mode.upcomingSectionTitle}</Text>
-        <View style={{ height: 8 }} />
-        {upcoming.length === 0 ? (
-          <Text style={styles.emptyText}>{mode.emptyUpcoming}</Text>
-        ) : (
-          upcoming.map((r) => (
-            <ReminderRow key={r.id} title={r.title} time={r.time} />
-          ))
-        )}
+        <UpcomingSection
+          title={mode.upcomingSectionTitle}
+          items={upcoming}
+          emptyText={mode.emptyUpcoming}
+          accent={mode.primary}
+        />
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function FamilySection({ kind, accent }: { kind: MemberKind; accent: string }) {
+  const members = useMembersStore((s) => (kind === 'human' ? s.humans : s.pets)) as
+    | HumanMember[]
+    | PetMember[];
+  const activeId = useMembersStore((s) => (kind === 'human' ? s.activeHumanId : s.activePetId));
+  const setActive = useMembersStore((s) =>
+    kind === 'human' ? s.setActiveHuman : s.setActivePet,
+  );
+  const [addOpen, setAddOpen] = useState(false);
+
+  const sectionTitle = kind === 'human' ? '👨‍👩‍👧 Famiglia' : '🐾 I miei animali';
+
+  return (
+    <View>
+      <View style={styles.familyHeader}>
+        <Text style={styles.sectionTitle}>{sectionTitle}</Text>
+        <Pressable hitSlop={8} onPress={() => setAddOpen(true)}>
+          <Text style={[styles.addLink, { color: accent }]}>+ Aggiungi</Text>
+        </Pressable>
+      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ marginTop: 10 }}
+        contentContainerStyle={{ gap: 8, paddingRight: 8 }}
+      >
+        {(members as (HumanMember | PetMember)[]).map((m) => {
+          const isActive = m.id === activeId;
+          return (
+            <Pressable
+              key={m.id}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setActive(m.id);
+              }}
+              style={[
+                styles.memberChip,
+                isActive && { backgroundColor: accent, borderColor: accent },
+              ]}
+            >
+              <Text style={styles.memberChipEmoji}>{memberEmoji(m)}</Text>
+              <Text
+                style={[styles.memberChipName, isActive && { color: '#fff' }]}
+                numberOfLines={1}
+              >
+                {m.name}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <Pressable
+          onPress={() => setAddOpen(true)}
+          style={[styles.memberChip, { borderStyle: 'dashed' }]}
+        >
+          <Ionicons name="add" size={18} color={accent} />
+        </Pressable>
+      </ScrollView>
+      <AddMemberModal
+        visible={addOpen}
+        kind={kind}
+        accent={accent}
+        onClose={() => setAddOpen(false)}
+        onAdded={() => setAddOpen(false)}
+      />
+    </View>
+  );
+}
+
+function UpcomingSection({
+  title,
+  items,
+  emptyText,
+  accent,
+}: {
+  title: string;
+  items: { id: string; title: string; time: string }[];
+  emptyText: string;
+  accent: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (items.length === 0) {
+    return (
+      <View>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={{ height: 8 }} />
+        <Text style={styles.emptyText}>{emptyText}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.upcomingCard}>
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync();
+          setExpanded((v) => !v);
+        }}
+        style={styles.upcomingHeader}
+      >
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={[styles.countBadge, { backgroundColor: accent + '22' }]}>
+          <Text style={[styles.countBadgeTxt, { color: accent }]}>{items.length}</Text>
+        </View>
+        <View style={{ flex: 1 }} />
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={colors.muted}
+        />
+      </Pressable>
+      {expanded && (
+        <View style={{ marginTop: 12 }}>
+          {items.map((r) => (
+            <ReminderRow key={r.id} title={r.title} time={r.time} />
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -321,4 +455,47 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: 8,
   },
+  familyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  addLink: { fontSize: 13, fontWeight: '700' },
+  memberChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#fff',
+    minWidth: 44,
+    justifyContent: 'center',
+  },
+  memberChipEmoji: { fontSize: 16 },
+  memberChipName: { fontSize: 13, fontWeight: '700', color: colors.ink, maxWidth: 110 },
+  upcomingCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginBottom: 8,
+  },
+  upcomingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countBadge: {
+    minWidth: 24,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  countBadgeTxt: { fontSize: 12, fontWeight: '800' },
 });

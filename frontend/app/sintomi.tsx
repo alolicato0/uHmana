@@ -20,7 +20,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MemberPickerModal } from '../src/components/MemberPickerModal';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { useAuth } from '../src/context/AuthContext';
+import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { chat, toDataUrl } from '../src/services/openrouter';
 import { computeHealthScore } from '../src/store/symptoms';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
@@ -165,10 +168,11 @@ export default function SintomiScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.ink} />
         </Pressable>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Sintomi & Benessere</Text>
           <Text style={styles.headerSub}>Monitora il tuo stato</Text>
         </View>
+        <MemberSwitcher kind="human" accent={colors.primary} variant="compact" />
       </View>
 
       <ScrollView
@@ -715,6 +719,7 @@ function SymptomModal({
 }) {
   const addLog = useSymptomsStore((s) => s.addLog);
   const updateLog = useSymptomsStore((s) => s.updateLog);
+  const { pickMember, modalProps: pickerProps } = useMemberPicker('human');
 
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<{ name: string; emoji: string } | null>(null);
@@ -742,13 +747,23 @@ function SymptomModal({
 
   const filtered = PRESET_SYMPTOMS.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
 
-  const save = () => {
+  const save = async () => {
     if (!selected) return;
     if (editing) {
       updateLog(editing.id, { name: selected.name, emoji: selected.emoji, intensity, duration, notes });
-    } else {
-      addLog({ name: selected.name, emoji: selected.emoji, intensity, duration, notes });
+      onClose();
+      return;
     }
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
+    addLog({
+      name: selected.name,
+      emoji: selected.emoji,
+      intensity,
+      duration,
+      notes,
+      memberId: picked.id ?? undefined,
+    });
     onClose();
   };
 
@@ -847,6 +862,7 @@ function SymptomModal({
           </>
         )}
       </View>
+      <MemberPickerModal {...pickerProps} accent={colors.primary} />
     </Modal>
   );
 }
@@ -863,6 +879,7 @@ function WellnessModal({
   onClose: () => void;
 }) {
   const setWellness = useSymptomsStore((s) => s.setWellness);
+  const { pickMember, modalProps: pickerProps } = useMemberPicker('human');
   const [draft, setDraft] = useState({
     sleep: wellness?.sleep ?? 60,
     hydration: wellness?.hydration ?? 50,
@@ -902,12 +919,18 @@ function WellnessModal({
           </View>
         ))}
         <Pressable
-          onPress={() => { setWellness(draft); onClose(); }}
+          onPress={async () => {
+            const picked = await pickMember();
+            if (picked.prompted && picked.id === null) return;
+            setWellness({ ...draft, memberId: picked.id ?? undefined });
+            onClose();
+          }}
           style={[styles.saveBtnSheet, { marginTop: 4 }]}
         >
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Salva</Text>
         </Pressable>
       </View>
+      <MemberPickerModal {...pickerProps} accent={colors.primary} />
     </Modal>
   );
 }

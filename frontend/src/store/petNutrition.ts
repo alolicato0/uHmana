@@ -12,12 +12,14 @@ export interface Meal {
   type: MealType;
   food: string;
   grams?: number;
+  memberId?: string;
 }
 
 export interface WeightEntry {
   id: string;
   date: string;   // YYYY-MM-DD
   kg: number;
+  memberId?: string;
 }
 
 interface PetNutritionState {

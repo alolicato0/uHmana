@@ -15,8 +15,11 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SectionChatModal } from '../src/components/SectionChatModal';
 import { DateWheelModal } from '../src/components/DateWheelModal';
+import { MemberPickerModal } from '../src/components/MemberPickerModal';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
+import { SectionChatModal } from '../src/components/SectionChatModal';
+import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { useProfileStore } from '../src/store/profile';
 import {
   type Antiparasitic,
@@ -102,6 +105,8 @@ export default function PrevenzioneScreen() {
 
   const { vaccines, antiparasitics, checks, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck } =
     usePreventionStore();
+
+  const { pickMember, modalProps: pickerProps } = useMemberPicker('pet');
 
   const scrollRef = useRef<ScrollView>(null);
   const vaccinesRef = useRef<View>(null);
@@ -322,52 +327,61 @@ export default function PrevenzioneScreen() {
     setShowCheckModal(true);
   }
 
-  function saveVaccine() {
+  async function saveVaccine() {
     if (!vName.trim() || !vDate) {
       setVErr('Inserisci nome e data applicazione');
       return;
     }
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const data = { name: vName.trim(), date: vDate, nextDate: vNextDate || undefined, lot: vLot.trim() || undefined, vet: vVet.trim() || undefined, notes: vNotes.trim() || undefined };
     if (editingVaccineId) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       updateVaccine(editingVaccineId, data);
       setEditingVaccineId(null);
     } else {
-      addVaccine(data);
+      const picked = await pickMember();
+      if (picked.prompted && picked.id === null) return; // user cancelled multi-pick
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addVaccine({ ...data, memberId: picked.id ?? undefined });
     }
     setVName(''); setVDate(''); setVNextDate(''); setVLot(''); setVVet(''); setVNotes(''); setVErr('');
     setShowVaccineModal(false);
   }
 
-  function saveAntiparasitic() {
+  async function saveAntiparasitic() {
     if (!aName.trim() || !aDateApplied || !aNextDate) {
       setAErr('Inserisci nome, data applicazione e prossima dose');
       return;
     }
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const data = { name: aName.trim(), type: aType, dateApplied: aDateApplied, nextDate: aNextDate, notes: aNotes.trim() || undefined };
     if (editingAntiId) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       updateAntiparasitic(editingAntiId, data);
       setEditingAntiId(null);
     } else {
-      addAntiparasitic(data);
+      const picked = await pickMember();
+      if (picked.prompted && picked.id === null) return; // user cancelled multi-pick
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addAntiparasitic({ ...data, memberId: picked.id ?? undefined });
     }
     setAName(''); setADateApplied(''); setANextDate(''); setANotes(''); setAType('pulci_zecche'); setAErr('');
     setShowAntiModal(false);
   }
 
-  function saveCheck() {
+  async function saveCheck() {
     if (!cName.trim() || !cDate) {
       setCErr('Inserisci tipo visita e data');
       return;
     }
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const data = { name: cName.trim(), date: cDate, nextDate: cNextDate || undefined, vet: cVet.trim() || undefined, notes: cNotes.trim() || undefined };
     if (editingCheckId) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       updateCheck(editingCheckId, data);
       setEditingCheckId(null);
     } else {
-      addCheck(data);
+      const picked = await pickMember();
+      if (picked.prompted && picked.id === null) return; // user cancelled multi-pick
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addCheck({ ...data, memberId: picked.id ?? undefined });
     }
     setCName(''); setCDate(''); setCNextDate(''); setCVet(''); setCNotes(''); setCErr('');
     setShowCheckModal(false);
@@ -423,6 +437,9 @@ export default function PrevenzioneScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Prevenzione</Text>
           <Text style={styles.headerSub}>{petName}</Text>
+        </View>
+        <View style={{ marginRight: 8 }}>
+          <MemberSwitcher kind="pet" accent={ACCENT} variant="compact" />
         </View>
         <Pressable
           onPress={() => {
@@ -1057,6 +1074,8 @@ export default function PrevenzioneScreen() {
         onConfirm={setPickedDate}
         onClose={() => setPickerOpen(null)}
       />
+
+      <MemberPickerModal {...pickerProps} accent={ACCENT} />
     </SafeAreaView>
   );
 }

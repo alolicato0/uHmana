@@ -90,6 +90,7 @@ export interface ReminderSchedule {
 export interface Reminder {
   id: string;
   profileId?: string;
+  memberId?: string;
   category: ReminderCategory;
   title: string;
   notes?: string;

@@ -17,6 +17,7 @@ export interface DailyStatus {
   appetito: AppetitoLevel;
   attivita: AttivitaLevel;
   idratazione: IdratLevel;
+  memberId?: string;
 }
 
 export interface ActivityEntry {
@@ -25,6 +26,7 @@ export interface ActivityEntry {
   date: string; // ISO full datetime
   durationMin: number;
   note?: string;
+  memberId?: string;
 }
 
 export interface MoodEntry {
@@ -33,6 +35,7 @@ export interface MoodEntry {
   level: MoodLevel;
   emoji: string;
   note?: string;
+  memberId?: string;
 }
 
 export interface BehaviorFlag {
@@ -40,6 +43,7 @@ export interface BehaviorFlag {
   label: string;
   flaggedAt: string;
   note?: string;
+  memberId?: string;
 }
 
 interface PetActivityState {
@@ -49,15 +53,15 @@ interface PetActivityState {
   behaviorFlags: BehaviorFlag[];
   aiInsight: string;
 
-  setTodayStatus: (status: Omit<DailyStatus, 'date'>) => void;
+  setTodayStatus: (status: Omit<DailyStatus, 'date'>, memberId?: string) => void;
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => void;
   addMood: (entry: Omit<MoodEntry, 'id'>) => void;
-  addBehaviorFlag: (label: string, note?: string) => void;
+  addBehaviorFlag: (label: string, note?: string, memberId?: string) => void;
   removeBehaviorFlag: (id: string) => void;
   setAiInsight: (text: string) => void;
-  getTodayStatus: () => DailyStatus | undefined;
-  getWeekActivity: () => { date: string; totalMin: number }[];
-  getRecentMoods: (n: number) => MoodEntry[];
+  getTodayStatus: (memberId?: string) => DailyStatus | undefined;
+  getWeekActivity: (memberId?: string) => { date: string; totalMin: number }[];
+  getRecentMoods: (n: number, memberId?: string) => MoodEntry[];
 }
 
 function todayStr(): string {
@@ -79,18 +83,25 @@ export const usePetActivityStore = create<PetActivityState>()(
       behaviorFlags: [],
       aiInsight: '',
 
-      setTodayStatus: (status) => {
+      setTodayStatus: (status, memberId) => {
         const today = todayStr();
+        const mid = memberId ?? status.memberId;
         set((s) => {
-          const exists = s.dailyStatuses.some((d) => d.date === today);
+          const exists = s.dailyStatuses.some(
+            (d) => d.date === today && (d.memberId ?? null) === (mid ?? null),
+          );
           if (exists) {
             return {
               dailyStatuses: s.dailyStatuses.map((d) =>
-                d.date === today ? { ...status, date: today } : d,
+                d.date === today && (d.memberId ?? null) === (mid ?? null)
+                  ? { ...status, date: today, memberId: mid }
+                  : d,
               ),
             };
           }
-          return { dailyStatuses: [...s.dailyStatuses, { ...status, date: today }] };
+          return {
+            dailyStatuses: [...s.dailyStatuses, { ...status, date: today, memberId: mid }],
+          };
         });
       },
 
@@ -110,7 +121,7 @@ export const usePetActivityStore = create<PetActivityState>()(
           ],
         })),
 
-      addBehaviorFlag: (label, note) =>
+      addBehaviorFlag: (label, note, memberId) =>
         set((s) => ({
           behaviorFlags: [
             {
@@ -118,6 +129,7 @@ export const usePetActivityStore = create<PetActivityState>()(
               label,
               flaggedAt: new Date().toISOString(),
               note,
+              memberId,
             },
             ...s.behaviorFlags,
           ],
@@ -128,26 +140,34 @@ export const usePetActivityStore = create<PetActivityState>()(
 
       setAiInsight: (text) => set({ aiInsight: text }),
 
-      getTodayStatus: () => {
+      getTodayStatus: (memberId) => {
         const today = todayStr();
-        return get().dailyStatuses.find((d) => d.date === today);
+        const list = get().dailyStatuses.filter((d) => d.date === today);
+        if (memberId) {
+          return list.find((d) => d.memberId === memberId) ?? list.find((d) => !d.memberId);
+        }
+        return list[0];
       },
 
-      getWeekActivity: () => {
+      getWeekActivity: (memberId) => {
         const { activityLog } = get();
+        const filtered = memberId
+          ? activityLog.filter((a) => !a.memberId || a.memberId === memberId)
+          : activityLog;
         return Array.from({ length: 7 }, (_, i) => {
           const ds = dateOfOffset(6 - i);
-          const totalMin = activityLog
+          const totalMin = filtered
             .filter((a) => a.date.startsWith(ds))
             .reduce((sum, a) => sum + a.durationMin, 0);
           return { date: ds, totalMin };
         });
       },
 
-      getRecentMoods: (n) => {
-        return [...get().moodLog]
-          .sort((a, b) => b.date.localeCompare(a.date))
-          .slice(0, n);
+      getRecentMoods: (n, memberId) => {
+        const list = memberId
+          ? get().moodLog.filter((m) => !m.memberId || m.memberId === memberId)
+          : get().moodLog;
+        return [...list].sort((a, b) => b.date.localeCompare(a.date)).slice(0, n);
       },
     }),
     {

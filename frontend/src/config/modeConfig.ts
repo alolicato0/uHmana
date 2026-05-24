@@ -120,8 +120,8 @@ const pet: ModeConfig = {
     },
     {
       icon: 'happy-outline',
-      title: 'Comportamento',
-      subtitle: 'Umore e attività',
+      title: '🐕 Attività & Umore',
+      subtitle: 'Energia, comportamento e benessere quotidiano',
       color: '#EC4899',
       route: '/comportamento',
     },

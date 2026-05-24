@@ -27,8 +27,11 @@ import {
   type WaterLevel,
   usePetNutritionStore,
 } from '../src/store/petNutrition';
+import { MemberPickerModal } from '../src/components/MemberPickerModal';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { SectionChatModal } from '../src/components/SectionChatModal';
 import { TimeWheelModal } from '../src/components/TimeWheelModal';
+import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { radii } from '../src/theme';
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
@@ -78,6 +81,8 @@ export default function NutrizioneScreen() {
   const { meals, weightLog, waterLevel, addMeal, removeMeal, addWeight, setWater } =
     usePetNutritionStore();
 
+  const { pickMember, modalProps: memberPickerProps } = useMemberPicker('pet');
+
   // ── Modal state ──
   const [showAddMeal, setShowAddMeal] = useState(false);
   const [mealType, setMealType] = useState<MealType>('colazione');
@@ -114,8 +119,10 @@ export default function NutrizioneScreen() {
   const heroSub = lastMeal ? `Ultimo pasto: ${relativeTime(lastMeal.time)}` : `Registra il primo pasto di ${petName}`;
 
   // ── Handlers ──
-  const saveMeal = () => {
+  const saveMeal = async () => {
     if (!mealFood.trim()) return;
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addMeal({
       date: today(),
@@ -123,16 +130,19 @@ export default function NutrizioneScreen() {
       type: mealType,
       food: mealFood.trim(),
       grams: mealGrams ? parseInt(mealGrams, 10) : undefined,
+      memberId: picked.id ?? undefined,
     });
     setMealFood(''); setMealGrams(''); setMealTime(nowTime()); setMealType('colazione');
     setShowAddMeal(false);
   };
 
-  const saveWeight = () => {
+  const saveWeight = async () => {
     const kg = parseFloat(weightInput.replace(',', '.'));
     if (isNaN(kg) || kg <= 0) return;
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addWeight({ date: today(), kg });
+    addWeight({ date: today(), kg, memberId: picked.id ?? undefined });
     setWeightInput('');
     setShowWeightModal(false);
   };
@@ -213,6 +223,9 @@ export default function NutrizioneScreen() {
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>🍖 Nutrizione</Text>
           <Text style={styles.headerSub}>Alimentazione e benessere quotidiano{petProfile ? ` di ${petName}` : ''}</Text>
+        </View>
+        <View style={{ marginRight: 8 }}>
+          <MemberSwitcher kind="pet" accent={TEAL} variant="compact" />
         </View>
         <Pressable onPress={() => goToChat()} hitSlop={8}>
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={TEAL} />
@@ -642,6 +655,8 @@ export default function NutrizioneScreen() {
         welcome={`Ciao! Sono l'assistente nutrizione di ${petName} 🍖\nPosso aiutarti su pasti, dieta, peso, idratazione e alimenti sicuri.`}
         buildContext={buildNutriContext}
       />
+
+      <MemberPickerModal {...memberPickerProps} accent={TEAL} />
     </SafeAreaView>
   );
 }

@@ -17,7 +17,10 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { MemberPickerModal } from '../src/components/MemberPickerModal';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { useAuth } from '../src/context/AuthContext';
+import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { useDoseStore } from '../src/store/doses';
 import type { DoseAction } from '../src/store/doses';
 import { useRemindersStore } from '../src/store/reminders';
@@ -183,6 +186,7 @@ export default function PianoSaluteScreen() {
   const loadReminders = useRemindersStore((s) => s.load);
   const addReminder = useRemindersStore((s) => s.add);
   const removeReminder = useRemindersStore((s) => s.remove);
+  const { pickMember, modalProps: memberPickerProps } = useMemberPicker('human');
   const records = useDoseStore((s) => s.records);
   const logDose = useDoseStore((s) => s.logDose);
   const getWeekAdherence = useDoseStore((s) => s.getWeekAdherence);
@@ -294,6 +298,8 @@ export default function PianoSaluteScreen() {
 
   const handleAdd = async () => {
     if (!form.name.trim()) return;
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
     const title = `${form.name.trim()}${form.dose ? ' ' + form.dose.trim() : ''}`;
     const freqLabel = form.frequency === '8h' ? 'ogni 8h' : form.frequency === '12h' ? 'ogni 12h' : 'ogni 24h';
     const times = calcTimes(form.time, form.frequency);
@@ -305,6 +311,7 @@ export default function PianoSaluteScreen() {
           notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
           schedule: { kind: 'daily', time: t },
           enabled: true,
+          memberId: picked.id ?? undefined,
         },
         getToken,
       );
@@ -336,6 +343,9 @@ export default function PianoSaluteScreen() {
       {showCheck && <CheckAnim onDone={() => setShowCheck(false)} />}
 
       <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 90 }} showsVerticalScrollIndicator={false}>
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 10 }}>
+          <MemberSwitcher kind="human" accent={colors.primary} variant="compact" />
+        </View>
         {/* Drug interaction warning */}
         {interactions.length > 0 && !intDismissed && (
           <View style={styles.interactionBox}>
@@ -625,6 +635,8 @@ export default function PianoSaluteScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <MemberPickerModal {...memberPickerProps} accent={colors.primary} />
     </SafeAreaView>
   );
 }
