@@ -9,7 +9,8 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "950715321534-8f6e8i1fop51f23r3k638vlv5jvc9kht.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -19,14 +20,16 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "950715321534-8f6e8i1fop51f23r3k638vlv5jvc9kht.apps.googleusercontent.com"
       }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://uhmana-api.onrender.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "950715321534-8f6e8i1fop51f23r3k638vlv5jvc9kht.apps.googleusercontent.com"
       }
     }
   },
