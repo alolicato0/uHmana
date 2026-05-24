@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { chat } from '../services/openrouter';
-import type { ChatMessage } from '../types';
+import type { ChatAttachment, ChatMessage } from '../types';
 
 export interface MonitorItem {
   id: string;
@@ -24,6 +24,7 @@ export interface VetMessage {
   role: 'user' | 'assistant';
   text: string;
   createdAt: string;
+  attachments?: ChatAttachment[];
 }
 
 const DEFAULT_MONITOR: MonitorItem[] = [
@@ -52,7 +53,7 @@ interface VetState {
   addSymptomEntry: (entry: Omit<SymptomEntry, 'id' | 'createdAt'>) => void;
   sendVetMessage: (
     text: string,
-    opts: { getToken: () => Promise<string | null>; petName?: string },
+    opts: { getToken: () => Promise<string | null>; petName?: string; attachments?: ChatAttachment[] },
   ) => Promise<void>;
   clearVetChat: () => void;
 }
@@ -85,15 +86,16 @@ export const useVetStore = create<VetState>()(
           ],
         })),
 
-      sendVetMessage: async (text, { getToken, petName = 'il tuo animale' }) => {
+      sendVetMessage: async (text, { getToken, petName = 'il tuo animale', attachments }) => {
         const trimmed = text.trim();
-        if (!trimmed) return;
+        if (!trimmed && (!attachments || attachments.length === 0)) return;
 
         const userMsg: VetMessage = {
           id: `vu-${Date.now()}`,
           role: 'user',
           text: trimmed,
           createdAt: new Date().toISOString(),
+          attachments,
         };
         set((s) => ({ vetMessages: [...s.vetMessages, userMsg], vetSending: true }));
 
@@ -104,6 +106,7 @@ export const useVetStore = create<VetState>()(
             role: m.role,
             text: m.text,
             createdAt: m.createdAt,
+            attachments: m.attachments,
           }));
 
           const reply = await chat({

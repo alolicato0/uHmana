@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
+import { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/config/modeConfig';
 import { useAuth } from '../../src/context/AuthContext';
+import { useNotifSeenStore } from '../../src/store/notifSeen';
 import { usePreventionStore } from '../../src/store/prevention';
 import { useProfileStore } from '../../src/store/profile';
 import { useRemindersStore } from '../../src/store/reminders';
@@ -50,10 +52,17 @@ export default function HomeScreen() {
           .slice(0, 3)
           .map((r) => ({ id: r.id, title: r.title, time: r.schedule.time ?? r.schedule.kind }));
 
-  const notifCount: number =
+  const seenIds = useNotifSeenStore((s) => s.seenIds);
+  const notifIds: string[] =
     activeKind === 'pet'
-      ? vaccines.filter((v) => !!v.nextDate).length + antis.length + checks.filter((c) => !!c.nextDate).length
-      : reminders.filter((r) => r.enabled).length;
+      ? [
+          ...vaccines.filter((v) => !!v.nextDate).map((v) => `v_${v.id}`),
+          ...antis.map((a) => `a_${a.id}`),
+          ...checks.filter((c) => !!c.nextDate).map((c) => `c_${c.id}`),
+        ]
+      : reminders.filter((r) => r.enabled).map((r) => r.id);
+  const seenSet = useMemo(() => new Set(seenIds), [seenIds]);
+  const notifCount = notifIds.filter((id) => !seenSet.has(id)).length;
 
   const firstName = user?.name?.split(' ')[0] ?? profile?.name?.split(' ')[0] ?? '';
 

@@ -1,10 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -19,11 +21,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../src/context/AuthContext';
-import { chat } from '../src/services/openrouter';
+import { chat, toDataUrl } from '../src/services/openrouter';
 import { computeHealthScore } from '../src/store/symptoms';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
+import type { ChatAttachment } from '../src/types';
 
 // ─── Costanti ────────────────────────────────────────────────────────────────
 
@@ -294,7 +297,7 @@ export default function SintomiScreen() {
       {/* FAB — apre modal chat inline */}
       <Pressable onPress={() => setChatOpen(true)} style={styles.fab}>
         <Ionicons name="chatbubble-ellipses" size={18} color="#fff" />
-        <Text style={styles.fabText}>Chiedi all'AI</Text>
+        <Text style={styles.fabText}>Chat Med</Text>
       </Pressable>
 
       {/* Menu 3 puntini */}
@@ -485,7 +488,7 @@ function IntensitySlider({ value, onChange }: { value: number; onChange: (v: num
 
 // ─── Chat AI inline ───────────────────────────────────────────────────────────
 
-type LocalMsg = { role: 'user' | 'assistant'; text: string };
+type LocalMsg = { role: 'user' | 'assistant'; text: string; attachments?: ChatAttachment[] };
 
 function SintomiChatModal({
   visible,
@@ -503,7 +506,36 @@ function SintomiChatModal({
   const [messages, setMessages] = useState<LocalMsg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [pending, setPending] = useState<ChatAttachment[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const flatRef = useRef<FlatList<LocalMsg>>(null);
+
+  async function pickFromLibrary() {
+    setPickerOpen(false);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.7,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const mime = asset.mimeType ?? 'image/jpeg';
+    const dataUrl = await toDataUrl(asset.uri, mime);
+    setPending((p) => [...p, { url: asset.uri, mimeType: mime, dataUrl }]);
+  }
+
+  async function pickFromCamera() {
+    setPickerOpen(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const mime = asset.mimeType ?? 'image/jpeg';
+    const dataUrl = await toDataUrl(asset.uri, mime);
+    setPending((p) => [...p, { url: asset.uri, mimeType: mime, dataUrl }]);
+  }
 
   // Reset su ogni apertura
   const [wasVisible, setWasVisible] = useState(false);
@@ -530,9 +562,11 @@ function SintomiChatModal({
 
   const send = async () => {
     const trimmed = input.trim();
-    if (!trimmed || sending) return;
+    if ((!trimmed && pending.length === 0) || sending) return;
+    const attachments = pending;
     setInput('');
-    const updated: LocalMsg[] = [...messages, { role: 'user', text: trimmed }];
+    setPending([]);
+    const updated: LocalMsg[] = [...messages, { role: 'user', text: trimmed, attachments: attachments.length ? attachments : undefined }];
     setMessages(updated);
     setSending(true);
     try {
@@ -541,6 +575,7 @@ function SintomiChatModal({
         id: `m-${i}`,
         role: m.role,
         text: m.text,
+        attachments: m.attachments,
         createdAt: new Date().toISOString(),
       }));
       const reply = await chat({ history, extraContext: buildContext(), token });
@@ -562,7 +597,7 @@ function SintomiChatModal({
         <View style={styles.sheetHandle} />
         <View style={styles.chatHeader}>
           <Ionicons name="sparkles" size={18} color="#3B82F6" />
-          <Text style={styles.chatHeaderText}>Chiedi all'AI</Text>
+          <Text style={styles.chatHeaderText}>Chat Med</Text>
           <Pressable onPress={onClose} hitSlop={10} style={{ marginLeft: 'auto' }}>
             <Ionicons name="close" size={22} color={colors.muted} />
           </Pressable>
@@ -580,15 +615,20 @@ function SintomiChatModal({
                 item.role === 'user' ? styles.chatBubbleUser : styles.chatBubbleAI,
               ]}
             >
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: item.role === 'user' ? '#fff' : colors.ink,
-                  lineHeight: 19,
-                }}
-              >
-                {item.text}
-              </Text>
+              {item.attachments?.map((a, i) => (
+                <Image key={i} source={{ uri: a.url }} style={styles.chatBubbleImg} />
+              ))}
+              {item.text ? (
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: item.role === 'user' ? '#fff' : colors.ink,
+                    lineHeight: 19,
+                  }}
+                >
+                  {item.text}
+                </Text>
+              ) : null}
             </View>
           )}
         />
@@ -597,7 +637,31 @@ function SintomiChatModal({
             <ActivityIndicator size="small" color={colors.primary} />
           </View>
         )}
+        {pending.length > 0 && (
+          <View style={styles.chatAttachStrip}>
+            {pending.map((a, i) => (
+              <View key={i} style={styles.chatAttachThumbWrap}>
+                <Image source={{ uri: a.url }} style={styles.chatAttachThumb} />
+                <Pressable
+                  style={styles.chatAttachRemove}
+                  onPress={() => setPending((p) => p.filter((_, idx) => idx !== i))}
+                  hitSlop={6}
+                >
+                  <Ionicons name="close" size={12} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
         <View style={styles.chatInputRow}>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            style={styles.chatAttachBtn}
+            disabled={sending}
+            hitSlop={6}
+          >
+            <Ionicons name="add" size={22} color={colors.primary} />
+          </Pressable>
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -609,13 +673,31 @@ function SintomiChatModal({
           />
           <Pressable
             onPress={send}
-            disabled={!input.trim() || sending}
-            style={[styles.chatSendBtn, (!input.trim() || sending) && { opacity: 0.4 }]}
+            disabled={(!input.trim() && pending.length === 0) || sending}
+            style={[styles.chatSendBtn, ((!input.trim() && pending.length === 0) || sending) && { opacity: 0.4 }]}
           >
             <Ionicons name="send" size={18} color="#fff" />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setPickerOpen(false)} />
+        <View style={styles.chatPickerSheet}>
+          <View style={styles.sheetHandle} />
+          <Pressable style={styles.chatPickerItem} onPress={pickFromCamera}>
+            <Ionicons name="camera-outline" size={22} color={colors.ink} />
+            <Text style={styles.chatPickerItemTxt}>Scatta foto</Text>
+          </Pressable>
+          <Pressable style={styles.chatPickerItem} onPress={pickFromLibrary}>
+            <Ionicons name="images-outline" size={22} color={colors.ink} />
+            <Text style={styles.chatPickerItemTxt}>Scegli dalla galleria</Text>
+          </Pressable>
+          <Pressable style={[styles.chatPickerItem, { justifyContent: 'center' }]} onPress={() => setPickerOpen(false)}>
+            <Text style={[styles.chatPickerItemTxt, { color: colors.muted }]}>Annulla</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -1131,4 +1213,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  chatAttachBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#F9FAFB',
+  },
+  chatAttachStrip: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 6 },
+  chatAttachThumbWrap: { position: 'relative' },
+  chatAttachThumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: '#F3F4F6' },
+  chatAttachRemove: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#1F2937',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatBubbleImg: { width: 200, height: 200, borderRadius: 12, marginBottom: 6, backgroundColor: '#F3F4F6' },
+  chatPickerSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 28,
+    paddingTop: 6,
+  },
+  chatPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  chatPickerItemTxt: { fontSize: 15, fontWeight: '600', color: colors.ink },
 });

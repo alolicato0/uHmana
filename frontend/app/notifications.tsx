@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { scheduleTestNotification } from '../src/services/preventionNotifications';
-import { useProfileStore } from '../src/store/profile';
+import { useNotifSeenStore } from '../src/store/notifSeen';
 import { usePreventionStore } from '../src/store/prevention';
+import { useProfileStore } from '../src/store/profile';
 import { useRemindersStore } from '../src/store/reminders';
 import { colors } from '../src/theme';
 
@@ -52,6 +53,8 @@ export default function NotificationsScreen() {
   const antis = usePreventionStore((s) => s.antiparasitics);
   const checks = usePreventionStore((s) => s.checks);
   const reminders = useRemindersStore((s) => s.reminders);
+  const markSeen = useNotifSeenStore((s) => s.markSeen);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const isPet = activeKind === 'pet';
   const accent = isPet ? '#10B981' : colors.primary;
@@ -83,6 +86,26 @@ export default function NotificationsScreen() {
       }));
   }, [isPet, vaccines, antis, checks, reminders]);
 
+  const visibleItems = useMemo(() => items.filter((it) => !dismissed.has(it.key)), [items, dismissed]);
+
+  useEffect(() => {
+    if (items.length > 0) markSeen(items.map((it) => it.key));
+  }, [items, markSeen]);
+
+  const dismissOne = (key: string) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDismissed((s) => {
+      const next = new Set(s);
+      next.add(key);
+      return next;
+    });
+  };
+
+  const openItem = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push(isPet ? '/prevenzione' : '/reminders');
+  };
+
   async function onTestNotification() {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -106,7 +129,7 @@ export default function NotificationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <View style={styles.empty}>
             <Text style={{ fontSize: 44 }}>🔕</Text>
             <Text style={styles.emptyTitle}>Nessuna notifica</Text>
@@ -123,11 +146,11 @@ export default function NotificationsScreen() {
             </Pressable>
           </View>
         ) : (
-          items.map((it) => {
+          visibleItems.map((it) => {
             const days = daysUntil(it.iso);
             const col = whenColor(days);
             return (
-              <View key={it.key} style={styles.row}>
+              <Pressable key={it.key} style={styles.row} onPress={openItem}>
                 <View style={[styles.iconWrap, { backgroundColor: col + '22' }]}>
                   <Text style={{ fontSize: 18 }}>{it.emoji}</Text>
                 </View>
@@ -138,7 +161,10 @@ export default function NotificationsScreen() {
                 <View style={[styles.pill, { backgroundColor: col + '22' }]}>
                   <Text style={[styles.pillTxt, { color: col }]}>{whenLabel(days)}</Text>
                 </View>
-              </View>
+                <Pressable hitSlop={10} onPress={() => dismissOne(it.key)} style={styles.dismissBtn}>
+                  <Ionicons name="close" size={16} color="#9CA3AF" />
+                </Pressable>
+              </Pressable>
             );
           })
         )}
@@ -208,6 +234,7 @@ const styles = StyleSheet.create({
   rowSub: { fontSize: 11, color: '#6B7280', marginTop: 2 },
   pill: { borderRadius: 99, paddingVertical: 4, paddingHorizontal: 10 },
   pillTxt: { fontSize: 11, fontWeight: '700' },
+  dismissBtn: { padding: 4, marginLeft: 4 },
 
   testBtn: {
     flexDirection: 'row',

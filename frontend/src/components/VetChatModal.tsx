@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,8 +16,10 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { toDataUrl } from '../services/openrouter';
 import { useVetStore, type VetMessage } from '../store/vetStore';
 import { colors, radii } from '../theme';
+import type { ChatAttachment } from '../types';
 
 const TEAL = '#10B981';
 
@@ -37,6 +41,8 @@ export function VetChatModal({
   const clearVetChat = useVetStore((s) => s.clearVetChat);
 
   const [input, setInput] = useState('');
+  const [pending, setPending] = useState<ChatAttachment[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const listRef = useRef<FlatList<VetMessage>>(null);
   const prefillSent = useRef<string | null>(null);
 
@@ -55,16 +61,50 @@ export function VetChatModal({
 
   const handleSend = async () => {
     const msg = input.trim();
-    if (!msg || vetSending) return;
+    if ((!msg && pending.length === 0) || vetSending) return;
+    const attachments = pending;
     setInput('');
-    await sendVetMessage(msg, { getToken, petName });
+    setPending([]);
+    await sendVetMessage(msg, { getToken, petName, attachments: attachments.length ? attachments : undefined });
   };
+
+  async function pickFromLibrary() {
+    setPickerOpen(false);
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.7,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const mime = asset.mimeType ?? 'image/jpeg';
+    const dataUrl = await toDataUrl(asset.uri, mime);
+    setPending((p) => [...p, { url: asset.uri, mimeType: mime, dataUrl }]);
+  }
+
+  async function pickFromCamera() {
+    setPickerOpen(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    const mime = asset.mimeType ?? 'image/jpeg';
+    const dataUrl = await toDataUrl(asset.uri, mime);
+    setPending((p) => [...p, { url: asset.uri, mimeType: mime, dataUrl }]);
+  }
 
   const renderMessage = ({ item }: { item: VetMessage }) => {
     const isUser = item.role === 'user';
     return (
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-        <Text style={{ fontSize: 13, color: isUser ? '#fff' : colors.ink, lineHeight: 19 }}>{item.text}</Text>
+        {item.attachments?.map((a, i) => (
+          <Image key={i} source={{ uri: a.url }} style={styles.bubbleImg} />
+        ))}
+        {item.text ? (
+          <Text style={{ fontSize: 13, color: isUser ? '#fff' : colors.ink, lineHeight: 19 }}>{item.text}</Text>
+        ) : null}
       </View>
     );
   };
@@ -105,7 +145,31 @@ export function VetChatModal({
             <ActivityIndicator size="small" color={TEAL} />
           </View>
         )}
+        {pending.length > 0 && (
+          <View style={styles.attachStrip}>
+            {pending.map((a, i) => (
+              <View key={i} style={styles.attachThumbWrap}>
+                <Image source={{ uri: a.url }} style={styles.attachThumb} />
+                <Pressable
+                  style={styles.attachRemove}
+                  onPress={() => setPending((p) => p.filter((_, idx) => idx !== i))}
+                  hitSlop={6}
+                >
+                  <Ionicons name="close" size={12} color="#fff" />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
         <View style={styles.inputRow}>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            style={styles.attachBtn}
+            disabled={vetSending}
+            hitSlop={6}
+          >
+            <Ionicons name="add" size={22} color={TEAL} />
+          </Pressable>
           <TextInput
             value={input}
             onChangeText={setInput}
@@ -117,13 +181,31 @@ export function VetChatModal({
           />
           <Pressable
             onPress={handleSend}
-            style={[styles.sendBtn, (!input.trim() || vetSending) && { opacity: 0.4 }]}
-            disabled={!input.trim() || vetSending}
+            style={[styles.sendBtn, ((!input.trim() && pending.length === 0) || vetSending) && { opacity: 0.4 }]}
+            disabled={(!input.trim() && pending.length === 0) || vetSending}
           >
             <Ionicons name="send" size={18} color="#fff" />
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
+        <Pressable style={styles.overlay} onPress={() => setPickerOpen(false)} />
+        <View style={styles.pickerSheet}>
+          <View style={styles.handle} />
+          <Pressable style={styles.pickerItem} onPress={pickFromCamera}>
+            <Ionicons name="camera-outline" size={22} color={colors.ink} />
+            <Text style={styles.pickerItemTxt}>Scatta foto</Text>
+          </Pressable>
+          <Pressable style={styles.pickerItem} onPress={pickFromLibrary}>
+            <Ionicons name="images-outline" size={22} color={colors.ink} />
+            <Text style={styles.pickerItemTxt}>Scegli dalla galleria</Text>
+          </Pressable>
+          <Pressable style={[styles.pickerItem, { justifyContent: 'center' }]} onPress={() => setPickerOpen(false)}>
+            <Text style={[styles.pickerItemTxt, { color: colors.muted }]}>Annulla</Text>
+          </Pressable>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -174,4 +256,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
   },
   sendBtn: { borderRadius: 20, width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: TEAL },
+  attachBtn: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: '#F9FAFB' },
+  attachStrip: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 6, paddingBottom: 0 },
+  attachThumbWrap: { position: 'relative' },
+  attachThumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: '#F3F4F6' },
+  attachRemove: { position: 'absolute', top: -4, right: -4, width: 18, height: 18, borderRadius: 9, backgroundColor: '#1F2937', alignItems: 'center', justifyContent: 'center' },
+  bubbleImg: { width: 200, height: 200, borderRadius: 12, marginBottom: 6, backgroundColor: '#F3F4F6' },
+  pickerSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 28, paddingTop: 6 },
+  pickerItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  pickerItemTxt: { fontSize: 15, fontWeight: '600', color: colors.ink },
 });
