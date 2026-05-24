@@ -14,6 +14,8 @@ export default function TabsLayout() {
   const loadProfiles = useProfileStore((s) => s.load);
   const loadTimeline = useTimelineStore((s) => s.load);
   const loadReminders = useRemindersStore((s) => s.load);
+  const activeKind = useProfileStore((s) => s.activeKind);
+  const plusColor = activeKind === 'pet' ? '#10B981' : colors.primary;
 
   useEffect(() => {
     if (isSignedIn) {
@@ -69,11 +71,11 @@ export default function TabsLayout() {
                 width: 52,
                 height: 52,
                 borderRadius: 26,
-                backgroundColor: colors.primary,
+                backgroundColor: plusColor,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginTop: -16,
-                shadowColor: colors.primary,
+                shadowColor: plusColor,
                 shadowOpacity: 0.3,
                 shadowRadius: 8,
                 shadowOffset: { width: 0, height: 4 },
