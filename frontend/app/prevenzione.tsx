@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SectionChatModal } from '../src/components/SectionChatModal';
+import { DateWheelModal } from '../src/components/DateWheelModal';
 import { useProfileStore } from '../src/store/profile';
 import {
   type Antiparasitic,
@@ -68,6 +69,15 @@ function formatDate(isoDate: string): string {
     month: 'long',
     year: 'numeric',
   });
+}
+
+const MONTHS_ABBR = ['GEN', 'FEB', 'MAR', 'APR', 'MAG', 'GIU', 'LUG', 'AGO', 'SET', 'OTT', 'NOV', 'DIC'];
+
+function formatDateShort(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS_ABBR[d.getMonth()]} ${d.getFullYear()}`;
 }
 
 function parseDateInput(input: string): string | null {
@@ -136,6 +146,31 @@ export default function PrevenzioneScreen() {
   const [cNextDate, setCNextDate] = useState('');
   const [cVet, setCVet] = useState('');
   const [cNotes, setCNotes] = useState('');
+
+  const [pickerOpen, setPickerOpen] = useState<null | 'vDate' | 'vNext' | 'aApplied' | 'aNext' | 'cDate' | 'cNext'>(null);
+  const pickerValue =
+    pickerOpen === 'vDate' ? vDate :
+    pickerOpen === 'vNext' ? vNextDate :
+    pickerOpen === 'aApplied' ? aDateApplied :
+    pickerOpen === 'aNext' ? aNextDate :
+    pickerOpen === 'cDate' ? cDate :
+    pickerOpen === 'cNext' ? cNextDate : '';
+  const pickerTitle =
+    pickerOpen === 'vDate' ? 'Data applicazione' :
+    pickerOpen === 'vNext' ? 'Prossima dose' :
+    pickerOpen === 'aApplied' ? 'Data applicazione' :
+    pickerOpen === 'aNext' ? 'Prossima dose' :
+    pickerOpen === 'cDate' ? 'Data visita' :
+    pickerOpen === 'cNext' ? 'Prossima visita' : 'Scegli data';
+  function setPickedDate(iso: string) {
+    if (pickerOpen === 'vDate') setVDate(iso);
+    else if (pickerOpen === 'vNext') setVNextDate(iso);
+    else if (pickerOpen === 'aApplied') setADateApplied(iso);
+    else if (pickerOpen === 'aNext') setANextDate(iso);
+    else if (pickerOpen === 'cDate') setCDate(iso);
+    else if (pickerOpen === 'cNext') setCNextDate(iso);
+    setPickerOpen(null);
+  }
 
   const allUpcoming: { name: string; nextDate: string; type: string }[] = [];
   vaccines.forEach((v) => {
@@ -245,43 +280,34 @@ export default function PrevenzioneScreen() {
   }
 
   function saveVaccine() {
-    if (!vName.trim() || !vDate.trim()) return;
-    const date = parseDateInput(vDate);
-    if (!date) {
-      Alert.alert('Data non valida', 'Usa il formato GG/MM/AAAA');
+    if (!vName.trim() || !vDate) {
+      Alert.alert('Dati mancanti', 'Inserisci nome e data applicazione');
       return;
     }
-    const nextDate = vNextDate.trim() ? parseDateInput(vNextDate) ?? undefined : undefined;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addVaccine({ name: vName.trim(), date, nextDate, lot: vLot.trim() || undefined, vet: vVet.trim() || undefined, notes: vNotes.trim() || undefined });
+    addVaccine({ name: vName.trim(), date: vDate, nextDate: vNextDate || undefined, lot: vLot.trim() || undefined, vet: vVet.trim() || undefined, notes: vNotes.trim() || undefined });
     setVName(''); setVDate(''); setVNextDate(''); setVLot(''); setVVet(''); setVNotes('');
     setShowVaccineModal(false);
   }
 
   function saveAntiparasitic() {
-    if (!aName.trim() || !aDateApplied.trim() || !aNextDate.trim()) return;
-    const dateApplied = parseDateInput(aDateApplied);
-    const nextDate = parseDateInput(aNextDate);
-    if (!dateApplied || !nextDate) {
-      Alert.alert('Data non valida', 'Usa il formato GG/MM/AAAA');
+    if (!aName.trim() || !aDateApplied || !aNextDate) {
+      Alert.alert('Dati mancanti', 'Inserisci nome, data applicazione e prossima dose');
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addAntiparasitic({ name: aName.trim(), type: aType, dateApplied, nextDate, notes: aNotes.trim() || undefined });
+    addAntiparasitic({ name: aName.trim(), type: aType, dateApplied: aDateApplied, nextDate: aNextDate, notes: aNotes.trim() || undefined });
     setAName(''); setADateApplied(''); setANextDate(''); setANotes(''); setAType('pulci_zecche');
     setShowAntiModal(false);
   }
 
   function saveCheck() {
-    if (!cName.trim() || !cDate.trim()) return;
-    const date = parseDateInput(cDate);
-    if (!date) {
-      Alert.alert('Data non valida', 'Usa il formato GG/MM/AAAA');
+    if (!cName.trim() || !cDate) {
+      Alert.alert('Dati mancanti', 'Inserisci tipo visita e data');
       return;
     }
-    const nextDate = cNextDate.trim() ? parseDateInput(cNextDate) ?? undefined : undefined;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addCheck({ name: cName.trim(), date, nextDate, vet: cVet.trim() || undefined, notes: cNotes.trim() || undefined });
+    addCheck({ name: cName.trim(), date: cDate, nextDate: cNextDate || undefined, vet: cVet.trim() || undefined, notes: cNotes.trim() || undefined });
     setCName(''); setCDate(''); setCNextDate(''); setCVet(''); setCNotes('');
     setShowCheckModal(false);
   }
@@ -757,22 +783,16 @@ export default function PrevenzioneScreen() {
               placeholder="Nome vaccino (es. Trivalente)"
               placeholderTextColor={MUTED}
             />
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={vDate}
-              onChangeText={setVDate}
-              placeholder="Data applicazione (GG/MM/AAAA)"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={vNextDate}
-              onChangeText={setVNextDate}
-              placeholder="Prossima dose (GG/MM/AAAA) — opzionale"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('vDate')}>
+              <Text style={vDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {vDate ? `Applicazione: ${formatDateShort(vDate)}` : 'Data applicazione'}
+              </Text>
+            </Pressable>
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('vNext')}>
+              <Text style={vNextDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {vNextDate ? `Prossima dose: ${formatDateShort(vNextDate)}` : 'Prossima dose — opzionale'}
+              </Text>
+            </Pressable>
             <TextInput
               style={[styles.modalInput, { marginTop: 10 }]}
               value={vLot}
@@ -838,22 +858,16 @@ export default function PrevenzioneScreen() {
               ))}
             </View>
 
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={aDateApplied}
-              onChangeText={setADateApplied}
-              placeholder="Data applicazione (GG/MM/AAAA)"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={aNextDate}
-              onChangeText={setANextDate}
-              placeholder="Prossima dose (GG/MM/AAAA)"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('aApplied')}>
+              <Text style={aDateApplied ? styles.modalInputTxt : styles.modalInputPh}>
+                {aDateApplied ? `Applicazione: ${formatDateShort(aDateApplied)}` : 'Data applicazione'}
+              </Text>
+            </Pressable>
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('aNext')}>
+              <Text style={aNextDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {aNextDate ? `Prossima dose: ${formatDateShort(aNextDate)}` : 'Prossima dose'}
+              </Text>
+            </Pressable>
             <TextInput
               style={[styles.modalInput, { marginTop: 10 }]}
               value={aNotes}
@@ -887,22 +901,16 @@ export default function PrevenzioneScreen() {
               placeholder="Tipo visita (es. Visita annuale)"
               placeholderTextColor={MUTED}
             />
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={cDate}
-              onChangeText={setCDate}
-              placeholder="Data visita (GG/MM/AAAA)"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.modalInput, { marginTop: 10 }]}
-              value={cNextDate}
-              onChangeText={setCNextDate}
-              placeholder="Prossima visita (GG/MM/AAAA) — opzionale"
-              placeholderTextColor={MUTED}
-              keyboardType="numeric"
-            />
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('cDate')}>
+              <Text style={cDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {cDate ? `Visita: ${formatDateShort(cDate)}` : 'Data visita'}
+              </Text>
+            </Pressable>
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setPickerOpen('cNext')}>
+              <Text style={cNextDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {cNextDate ? `Prossima visita: ${formatDateShort(cNextDate)}` : 'Prossima visita — opzionale'}
+              </Text>
+            </Pressable>
             <TextInput
               style={[styles.modalInput, { marginTop: 10 }]}
               value={cVet}
@@ -935,6 +943,15 @@ export default function PrevenzioneScreen() {
         accent={ACCENT}
         welcome={`Ciao! Sono il tuo assistente per la prevenzione di ${petName}.\nPosso aiutarti su vaccini, antiparassitari e controlli preventivi.`}
         buildContext={buildPreventionContext}
+      />
+
+      <DateWheelModal
+        visible={pickerOpen !== null}
+        value={pickerValue}
+        title={pickerTitle}
+        accent={ACCENT}
+        onConfirm={setPickedDate}
+        onClose={() => setPickerOpen(null)}
       />
     </SafeAreaView>
   );
@@ -1165,6 +1182,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: INK,
   },
+  modalInputTxt: { fontSize: 15, color: INK, fontWeight: '600' },
+  modalInputPh: { fontSize: 15, color: MUTED },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   typeChip: {
     borderRadius: 99,
