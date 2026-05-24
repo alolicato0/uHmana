@@ -50,6 +50,11 @@ export default function HomeScreen() {
           .slice(0, 3)
           .map((r) => ({ id: r.id, title: r.title, time: r.schedule.time ?? r.schedule.kind }));
 
+  const notifCount: number =
+    activeKind === 'pet'
+      ? vaccines.filter((v) => !!v.nextDate).length + antis.length + checks.filter((c) => !!c.nextDate).length
+      : reminders.filter((r) => r.enabled).length;
+
   const firstName = user?.name?.split(' ')[0] ?? profile?.name?.split(' ')[0] ?? '';
 
   return (
@@ -60,8 +65,13 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{mode.greeting(firstName)}</Text>
             <Text style={styles.subtitle}>{mode.subtitle}</Text>
           </View>
-          <Pressable onPress={() => router.push('/notifications')}>
+          <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={{ padding: 4 }}>
             <Ionicons name="notifications-outline" size={26} color={colors.ink} />
+            {notifCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeTxt}>{notifCount > 9 ? '9+' : String(notifCount)}</Text>
+              </View>
+            )}
           </Pressable>
         </View>
 
@@ -234,6 +244,21 @@ function ReminderRow({ title, time }: { title: string; time: string }) {
 }
 
 const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  badgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
   greeting: { fontSize: 22, fontWeight: '700', color: colors.ink },
   subtitle: { color: colors.muted, marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '600', color: colors.ink },

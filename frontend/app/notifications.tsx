@@ -147,9 +147,18 @@ export default function NotificationsScreen() {
           <Ionicons name="flash-outline" size={16} color="#6B7280" />
           <Text style={styles.testBtnTxt}>Invia notifica di test (10s)</Text>
         </Pressable>
-        <Text style={styles.hint}>
-          Se la notifica di test non arriva, controlla le impostazioni di sistema e i permessi di notifica per uHmana.
-        </Text>
+
+        <View style={styles.tipBox}>
+          <Text style={styles.tipTitle}>⚙️ Le notifiche arrivano in ritardo o non arrivano?</Text>
+          <Text style={styles.tipText}>
+            Android (specialmente Xiaomi/MIUI, Huawei, OPPO, Samsung) blocca le notifiche per risparmiare batteria.
+            {'\n\n'}
+            <Text style={styles.tipBold}>Per riceverle puntualmente:</Text>
+            {'\n'}• Impostazioni → App → uHmana → <Text style={styles.tipBold}>Risparmio batteria</Text> → Nessuna restrizione
+            {'\n'}• Impostazioni → App → uHmana → <Text style={styles.tipBold}>Avvio automatico</Text> → Attiva (solo MIUI/Xiaomi)
+            {'\n'}• Impostazioni → App → uHmana → Notifiche → <Text style={styles.tipBold}>Importanza Alta</Text>
+          </Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -213,5 +222,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   testBtnTxt: { fontSize: 12, fontWeight: '600', color: '#6B7280' },
-  hint: { fontSize: 11, color: '#9CA3AF', textAlign: 'center', marginTop: 8, lineHeight: 16, paddingHorizontal: 12 },
+  tipBox: {
+    marginTop: 16,
+    backgroundColor: '#FFFBEB',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  tipTitle: { fontSize: 13, fontWeight: '800', color: '#92400E', marginBottom: 8 },
+  tipText: { fontSize: 12, color: '#92400E', lineHeight: 18 },
+  tipBold: { fontWeight: '800' },
 });
