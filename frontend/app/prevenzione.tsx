@@ -4,7 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -101,7 +100,7 @@ export default function PrevenzioneScreen() {
   const petProfile = profiles.find((p) => p.kind === 'pet');
   const petName = petProfile?.name ?? 'il tuo animale';
 
-  const { vaccines, antiparasitics, checks, addVaccine, removeVaccine, addAntiparasitic, removeAntiparasitic, addCheck, removeCheck } =
+  const { vaccines, antiparasitics, checks, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck } =
     usePreventionStore();
 
   const scrollRef = useRef<ScrollView>(null);
@@ -127,6 +126,16 @@ export default function PrevenzioneScreen() {
   const [showVaccineModal, setShowVaccineModal] = useState(false);
   const [showAntiModal, setShowAntiModal] = useState(false);
   const [showCheckModal, setShowCheckModal] = useState(false);
+
+  const [editingVaccineId, setEditingVaccineId] = useState<string | null>(null);
+  const [editingAntiId, setEditingAntiId] = useState<string | null>(null);
+  const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
+
+  const [vErr, setVErr] = useState('');
+  const [aErr, setAErr] = useState('');
+  const [cErr, setCErr] = useState('');
+
+  const [confirmDel, setConfirmDel] = useState<{ kind: 'vaccine' | 'anti' | 'check'; id: string; name: string } | null>(null);
 
   const [vName, setVName] = useState('');
   const [vDate, setVDate] = useState('');
@@ -279,61 +288,113 @@ export default function PrevenzioneScreen() {
     setTimeout(() => scrollToRef(ref), 60);
   }
 
+  function openEditVaccine(v: Vaccine) {
+    setEditingVaccineId(v.id);
+    setVName(v.name);
+    setVDate(v.date);
+    setVNextDate(v.nextDate ?? '');
+    setVLot(v.lot ?? '');
+    setVVet(v.vet ?? '');
+    setVNotes(v.notes ?? '');
+    setVErr('');
+    setShowVaccineModal(true);
+  }
+
+  function openEditAnti(a: Antiparasitic) {
+    setEditingAntiId(a.id);
+    setAName(a.name);
+    setAType(a.type);
+    setADateApplied(a.dateApplied);
+    setANextDate(a.nextDate);
+    setANotes(a.notes ?? '');
+    setAErr('');
+    setShowAntiModal(true);
+  }
+
+  function openEditCheck(c: PreventiveCheck) {
+    setEditingCheckId(c.id);
+    setCName(c.name);
+    setCDate(c.date);
+    setCNextDate(c.nextDate ?? '');
+    setCVet(c.vet ?? '');
+    setCNotes(c.notes ?? '');
+    setCErr('');
+    setShowCheckModal(true);
+  }
+
   function saveVaccine() {
     if (!vName.trim() || !vDate) {
-      Alert.alert('Dati mancanti', 'Inserisci nome e data applicazione');
+      setVErr('Inserisci nome e data applicazione');
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addVaccine({ name: vName.trim(), date: vDate, nextDate: vNextDate || undefined, lot: vLot.trim() || undefined, vet: vVet.trim() || undefined, notes: vNotes.trim() || undefined });
-    setVName(''); setVDate(''); setVNextDate(''); setVLot(''); setVVet(''); setVNotes('');
+    const data = { name: vName.trim(), date: vDate, nextDate: vNextDate || undefined, lot: vLot.trim() || undefined, vet: vVet.trim() || undefined, notes: vNotes.trim() || undefined };
+    if (editingVaccineId) {
+      updateVaccine(editingVaccineId, data);
+      setEditingVaccineId(null);
+    } else {
+      addVaccine(data);
+    }
+    setVName(''); setVDate(''); setVNextDate(''); setVLot(''); setVVet(''); setVNotes(''); setVErr('');
     setShowVaccineModal(false);
   }
 
   function saveAntiparasitic() {
     if (!aName.trim() || !aDateApplied || !aNextDate) {
-      Alert.alert('Dati mancanti', 'Inserisci nome, data applicazione e prossima dose');
+      setAErr('Inserisci nome, data applicazione e prossima dose');
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addAntiparasitic({ name: aName.trim(), type: aType, dateApplied: aDateApplied, nextDate: aNextDate, notes: aNotes.trim() || undefined });
-    setAName(''); setADateApplied(''); setANextDate(''); setANotes(''); setAType('pulci_zecche');
+    const data = { name: aName.trim(), type: aType, dateApplied: aDateApplied, nextDate: aNextDate, notes: aNotes.trim() || undefined };
+    if (editingAntiId) {
+      updateAntiparasitic(editingAntiId, data);
+      setEditingAntiId(null);
+    } else {
+      addAntiparasitic(data);
+    }
+    setAName(''); setADateApplied(''); setANextDate(''); setANotes(''); setAType('pulci_zecche'); setAErr('');
     setShowAntiModal(false);
   }
 
   function saveCheck() {
     if (!cName.trim() || !cDate) {
-      Alert.alert('Dati mancanti', 'Inserisci tipo visita e data');
+      setCErr('Inserisci tipo visita e data');
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    addCheck({ name: cName.trim(), date: cDate, nextDate: cNextDate || undefined, vet: cVet.trim() || undefined, notes: cNotes.trim() || undefined });
-    setCName(''); setCDate(''); setCNextDate(''); setCVet(''); setCNotes('');
+    const data = { name: cName.trim(), date: cDate, nextDate: cNextDate || undefined, vet: cVet.trim() || undefined, notes: cNotes.trim() || undefined };
+    if (editingCheckId) {
+      updateCheck(editingCheckId, data);
+      setEditingCheckId(null);
+    } else {
+      addCheck(data);
+    }
+    setCName(''); setCDate(''); setCNextDate(''); setCVet(''); setCNotes(''); setCErr('');
     setShowCheckModal(false);
   }
 
   function confirmRemoveVaccine(id: string, name: string) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Elimina vaccino', `Rimuovere "${name}" dallo storico?`, [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => removeVaccine(id) },
-    ]);
+    setConfirmDel({ kind: 'vaccine', id, name });
   }
 
   function confirmRemoveAnti(id: string, name: string) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Elimina trattamento', `Rimuovere "${name}"?`, [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => removeAntiparasitic(id) },
-    ]);
+    setConfirmDel({ kind: 'anti', id, name });
   }
 
   function confirmRemoveCheck(id: string, name: string) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    Alert.alert('Elimina controllo', `Rimuovere "${name}"?`, [
-      { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => removeCheck(id) },
-    ]);
+    setConfirmDel({ kind: 'check', id, name });
+  }
+
+  function executeDelete() {
+    if (!confirmDel) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    if (confirmDel.kind === 'vaccine') removeVaccine(confirmDel.id);
+    else if (confirmDel.kind === 'anti') removeAntiparasitic(confirmDel.id);
+    else removeCheck(confirmDel.id);
+    setConfirmDel(null);
   }
 
   function antiProgress(a: Antiparasitic): number {
@@ -533,13 +594,22 @@ export default function PrevenzioneScreen() {
                           {v.notes}
                         </Text>
                       )}
-                      <Pressable
-                        style={styles.deleteBtn}
-                        onPress={() => confirmRemoveVaccine(v.id, v.name)}
-                      >
-                        <Ionicons name="trash-outline" size={14} color={RED} />
-                        <Text style={styles.deleteBtnTxt}>Elimina</Text>
-                      </Pressable>
+                      <View style={styles.cardActions}>
+                        <Pressable
+                          style={styles.editBtn}
+                          onPress={() => openEditVaccine(v)}
+                        >
+                          <Ionicons name="pencil-outline" size={14} color={ACCENT} />
+                          <Text style={styles.editBtnTxt}>Modifica</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.deleteBtn}
+                          onPress={() => confirmRemoveVaccine(v.id, v.name)}
+                        >
+                          <Ionicons name="trash-outline" size={14} color={RED} />
+                          <Text style={styles.deleteBtnTxt}>Elimina</Text>
+                        </Pressable>
+                      </View>
                     </View>
                   )}
                 </Pressable>
@@ -597,6 +667,9 @@ export default function PrevenzioneScreen() {
                         {days < 0 ? 'Scaduto' : days === 0 ? 'Oggi' : `${days}gg`}
                       </Text>
                     </View>
+                    <Pressable hitSlop={8} onPress={() => openEditAnti(a)}>
+                      <Ionicons name="pencil-outline" size={16} color={ACCENT} />
+                    </Pressable>
                     <Pressable hitSlop={8} onPress={() => confirmRemoveAnti(a.id, a.name)}>
                       <Ionicons name="trash-outline" size={16} color="#D1D5DB" />
                     </Pressable>
@@ -692,13 +765,22 @@ export default function PrevenzioneScreen() {
                           {c.notes}
                         </Text>
                       )}
-                      <Pressable
-                        style={styles.deleteBtn}
-                        onPress={() => confirmRemoveCheck(c.id, c.name)}
-                      >
-                        <Ionicons name="trash-outline" size={14} color={RED} />
-                        <Text style={styles.deleteBtnTxt}>Elimina</Text>
-                      </Pressable>
+                      <View style={styles.cardActions}>
+                        <Pressable
+                          style={styles.editBtn}
+                          onPress={() => openEditCheck(c)}
+                        >
+                          <Ionicons name="pencil-outline" size={14} color={ACCENT} />
+                          <Text style={styles.editBtnTxt}>Modifica</Text>
+                        </Pressable>
+                        <Pressable
+                          style={styles.deleteBtn}
+                          onPress={() => confirmRemoveCheck(c.id, c.name)}
+                        >
+                          <Ionicons name="trash-outline" size={14} color={RED} />
+                          <Text style={styles.deleteBtnTxt}>Elimina</Text>
+                        </Pressable>
+                      </View>
                     </View>
                   )}
                 </Pressable>
@@ -768,13 +850,14 @@ export default function PrevenzioneScreen() {
         </Pressable>
       </View>
 
-      <Modal visible={showVaccineModal} transparent animationType="slide" onRequestClose={() => setShowVaccineModal(false)}>
+      <Modal visible={showVaccineModal} transparent animationType="slide" onRequestClose={() => { setShowVaccineModal(false); setEditingVaccineId(null); setVErr(''); }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <Pressable style={styles.modalOverlay} onPress={() => setShowVaccineModal(false)} />
+          <Pressable style={styles.modalOverlay} onPress={() => { setShowVaccineModal(false); setEditingVaccineId(null); setVErr(''); }} />
           <View style={styles.modalSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.modalTitle}>Aggiungi vaccino</Text>
+            <Text style={styles.modalTitle}>{editingVaccineId ? 'Modifica vaccino' : 'Aggiungi vaccino'}</Text>
             <Text style={styles.modalSub}>Inserisci i dati del vaccino di {petName}</Text>
+            {vErr ? <Text style={styles.modalErr}>{vErr}</Text> : null}
 
             <TextInput
               style={styles.modalInput}
@@ -816,22 +899,23 @@ export default function PrevenzioneScreen() {
             />
             <View style={{ height: 16 }} />
             <Pressable style={[styles.saveBtn, { backgroundColor: ACCENT }]} onPress={saveVaccine}>
-              <Text style={styles.saveBtnTxt}>Salva vaccino</Text>
+              <Text style={styles.saveBtnTxt}>{editingVaccineId ? 'Aggiorna vaccino' : 'Salva vaccino'}</Text>
             </Pressable>
-            <Pressable style={styles.cancelBtn} onPress={() => setShowVaccineModal(false)}>
+            <Pressable style={styles.cancelBtn} onPress={() => { setShowVaccineModal(false); setEditingVaccineId(null); setVErr(''); }}>
               <Text style={styles.cancelBtnTxt}>Annulla</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={showAntiModal} transparent animationType="slide" onRequestClose={() => setShowAntiModal(false)}>
+      <Modal visible={showAntiModal} transparent animationType="slide" onRequestClose={() => { setShowAntiModal(false); setEditingAntiId(null); setAErr(''); }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <Pressable style={styles.modalOverlay} onPress={() => setShowAntiModal(false)} />
+          <Pressable style={styles.modalOverlay} onPress={() => { setShowAntiModal(false); setEditingAntiId(null); setAErr(''); }} />
           <View style={styles.modalSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.modalTitle}>Aggiungi antiparassitario</Text>
+            <Text style={styles.modalTitle}>{editingAntiId ? 'Modifica antiparassitario' : 'Aggiungi antiparassitario'}</Text>
             <Text style={styles.modalSub}>Trattamento per {petName}</Text>
+            {aErr ? <Text style={styles.modalErr}>{aErr}</Text> : null}
 
             <TextInput
               style={styles.modalInput}
@@ -877,22 +961,23 @@ export default function PrevenzioneScreen() {
             />
             <View style={{ height: 16 }} />
             <Pressable style={[styles.saveBtn, { backgroundColor: ACCENT }]} onPress={saveAntiparasitic}>
-              <Text style={styles.saveBtnTxt}>Salva trattamento</Text>
+              <Text style={styles.saveBtnTxt}>{editingAntiId ? 'Aggiorna trattamento' : 'Salva trattamento'}</Text>
             </Pressable>
-            <Pressable style={styles.cancelBtn} onPress={() => setShowAntiModal(false)}>
+            <Pressable style={styles.cancelBtn} onPress={() => { setShowAntiModal(false); setEditingAntiId(null); setAErr(''); }}>
               <Text style={styles.cancelBtnTxt}>Annulla</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={showCheckModal} transparent animationType="slide" onRequestClose={() => setShowCheckModal(false)}>
+      <Modal visible={showCheckModal} transparent animationType="slide" onRequestClose={() => { setShowCheckModal(false); setEditingCheckId(null); setCErr(''); }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <Pressable style={styles.modalOverlay} onPress={() => setShowCheckModal(false)} />
+          <Pressable style={styles.modalOverlay} onPress={() => { setShowCheckModal(false); setEditingCheckId(null); setCErr(''); }} />
           <View style={styles.modalSheet}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.modalTitle}>Aggiungi controllo</Text>
+            <Text style={styles.modalTitle}>{editingCheckId ? 'Modifica controllo' : 'Aggiungi controllo'}</Text>
             <Text style={styles.modalSub}>Visita o esame preventivo</Text>
+            {cErr ? <Text style={styles.modalErr}>{cErr}</Text> : null}
 
             <TextInput
               style={styles.modalInput}
@@ -927,13 +1012,32 @@ export default function PrevenzioneScreen() {
             />
             <View style={{ height: 16 }} />
             <Pressable style={[styles.saveBtn, { backgroundColor: ACCENT }]} onPress={saveCheck}>
-              <Text style={styles.saveBtnTxt}>Salva controllo</Text>
+              <Text style={styles.saveBtnTxt}>{editingCheckId ? 'Aggiorna controllo' : 'Salva controllo'}</Text>
             </Pressable>
-            <Pressable style={styles.cancelBtn} onPress={() => setShowCheckModal(false)}>
+            <Pressable style={styles.cancelBtn} onPress={() => { setShowCheckModal(false); setEditingCheckId(null); setCErr(''); }}>
               <Text style={styles.cancelBtnTxt}>Annulla</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={confirmDel !== null} transparent animationType="slide" onRequestClose={() => setConfirmDel(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setConfirmDel(null)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.modalTitle}>Conferma eliminazione</Text>
+          <Text style={[styles.modalSub, { marginBottom: 0 }]}>
+            Rimuovere <Text style={{ fontWeight: '700', color: INK }}>{confirmDel?.name}</Text>?{'\n'}
+            Questa operazione non può essere annullata.
+          </Text>
+          <View style={{ height: 20 }} />
+          <Pressable style={[styles.saveBtn, { backgroundColor: RED }]} onPress={executeDelete}>
+            <Text style={styles.saveBtnTxt}>Elimina</Text>
+          </Pressable>
+          <Pressable style={styles.cancelBtn} onPress={() => setConfirmDel(null)}>
+            <Text style={styles.cancelBtnTxt}>Annulla</Text>
+          </Pressable>
+        </View>
       </Modal>
 
       <SectionChatModal
@@ -1096,14 +1200,34 @@ const styles = StyleSheet.create({
   },
   detailRow: { fontSize: 13, color: INK, lineHeight: 19 },
   detailLabel: { fontWeight: '700' },
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editBtnTxt: { fontSize: 12, fontWeight: '600', color: ACCENT },
   deleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    marginTop: 8,
-    alignSelf: 'flex-start',
   },
   deleteBtnTxt: { fontSize: 12, fontWeight: '600', color: RED },
+  modalErr: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: RED,
+    backgroundColor: RED_LIGHT,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
 
   progressContainer: { marginTop: 10 },
   progressTrack: {

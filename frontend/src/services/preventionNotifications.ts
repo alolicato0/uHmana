@@ -10,10 +10,8 @@ function notifyHour(): { hour: number; minute: number } {
 }
 
 function dateAt(iso: string, hour: number, minute: number, offsetDays = 0): Date {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + offsetDays);
-  d.setHours(hour, minute, 0, 0);
-  return d;
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d + offsetDays, hour, minute, 0, 0);
 }
 
 async function scheduleAt(

@@ -32,7 +32,7 @@ export default function HomeScreen() {
             <Text style={styles.greeting}>{mode.greeting(firstName)}</Text>
             <Text style={styles.subtitle}>{mode.subtitle}</Text>
           </View>
-          <Pressable onPress={() => router.push('/reminders')}>
+          <Pressable onPress={() => router.push(activeKind === 'pet' ? '/prevenzione' : '/reminders')}>
             <Ionicons name="notifications-outline" size={26} color={colors.ink} />
           </Pressable>
         </View>

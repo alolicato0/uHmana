@@ -36,10 +36,13 @@ interface PreventionState {
   antiparasitics: Antiparasitic[];
   checks: PreventiveCheck[];
   addVaccine: (v: Omit<Vaccine, 'id'>) => void;
+  updateVaccine: (id: string, v: Omit<Vaccine, 'id'>) => void;
   removeVaccine: (id: string) => void;
   addAntiparasitic: (a: Omit<Antiparasitic, 'id'>) => void;
+  updateAntiparasitic: (id: string, a: Omit<Antiparasitic, 'id'>) => void;
   removeAntiparasitic: (id: string) => void;
   addCheck: (c: Omit<PreventiveCheck, 'id'>) => void;
+  updateCheck: (id: string, c: Omit<PreventiveCheck, 'id'>) => void;
   removeCheck: (id: string) => void;
   syncNotifications: () => Promise<void>;
 }
@@ -66,6 +69,11 @@ export const usePreventionStore = create<PreventionState>()(
         void syncFrom(get());
       },
 
+      updateVaccine: (id, v) => {
+        set((s) => ({ vaccines: s.vaccines.map((x) => (x.id === id ? { ...v, id } : x)) }));
+        void syncFrom(get());
+      },
+
       removeVaccine: (id) => {
         set((s) => ({ vaccines: s.vaccines.filter((v) => v.id !== id) }));
         void syncFrom(get());
@@ -76,6 +84,11 @@ export const usePreventionStore = create<PreventionState>()(
         void syncFrom(get());
       },
 
+      updateAntiparasitic: (id, a) => {
+        set((s) => ({ antiparasitics: s.antiparasitics.map((x) => (x.id === id ? { ...a, id } : x)) }));
+        void syncFrom(get());
+      },
+
       removeAntiparasitic: (id) => {
         set((s) => ({ antiparasitics: s.antiparasitics.filter((a) => a.id !== id) }));
         void syncFrom(get());
@@ -83,6 +96,11 @@ export const usePreventionStore = create<PreventionState>()(
 
       addCheck: (c) => {
         set((s) => ({ checks: [{ ...c, id: genId() }, ...s.checks] }));
+        void syncFrom(get());
+      },
+
+      updateCheck: (id, c) => {
+        set((s) => ({ checks: s.checks.map((x) => (x.id === id ? { ...c, id } : x)) }));
         void syncFrom(get());
       },
 
