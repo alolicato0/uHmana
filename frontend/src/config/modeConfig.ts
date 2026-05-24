@@ -123,7 +123,7 @@ const pet: ModeConfig = {
       title: 'Comportamento',
       subtitle: 'Umore e attività',
       color: '#EC4899',
-      route: '/(tabs)/timeline',
+      route: '/comportamento',
     },
   ],
 };

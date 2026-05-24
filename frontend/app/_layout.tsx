@@ -59,6 +59,7 @@ export default function RootLayout() {
           <Stack.Screen name="sintomi" options={{ headerShown: false }} />
           <Stack.Screen name="insight" options={{ headerShown: false }} />
           <Stack.Screen name="settings" options={{ headerShown: true, title: 'Impostazioni' }} />
+          <Stack.Screen name="comportamento" options={{ headerShown: false }} />
           <Stack.Screen
             name="add-event"
             options={{ headerShown: true, title: 'Aggiungi evento', presentation: 'modal' }}
