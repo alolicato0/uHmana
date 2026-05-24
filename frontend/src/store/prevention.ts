@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
+import { rescheduleAllPrevention } from '../services/preventionNotifications';
 
 export interface Vaccine {
   id: string;
@@ -40,34 +41,59 @@ interface PreventionState {
   removeAntiparasitic: (id: string) => void;
   addCheck: (c: Omit<PreventiveCheck, 'id'>) => void;
   removeCheck: (id: string) => void;
+  syncNotifications: () => Promise<void>;
 }
 
 const genId = () => Math.random().toString(36).slice(2);
 
+async function syncFrom(state: Pick<PreventionState, 'vaccines' | 'antiparasitics' | 'checks'>) {
+  try {
+    await rescheduleAllPrevention(state.vaccines, state.antiparasitics, state.checks);
+  } catch {
+    // ignore notification failures
+  }
+}
+
 export const usePreventionStore = create<PreventionState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       vaccines: [],
       antiparasitics: [],
       checks: [],
 
-      addVaccine: (v) =>
-        set((s) => ({ vaccines: [{ ...v, id: genId() }, ...s.vaccines] })),
+      addVaccine: (v) => {
+        set((s) => ({ vaccines: [{ ...v, id: genId() }, ...s.vaccines] }));
+        void syncFrom(get());
+      },
 
-      removeVaccine: (id) =>
-        set((s) => ({ vaccines: s.vaccines.filter((v) => v.id !== id) })),
+      removeVaccine: (id) => {
+        set((s) => ({ vaccines: s.vaccines.filter((v) => v.id !== id) }));
+        void syncFrom(get());
+      },
 
-      addAntiparasitic: (a) =>
-        set((s) => ({ antiparasitics: [{ ...a, id: genId() }, ...s.antiparasitics] })),
+      addAntiparasitic: (a) => {
+        set((s) => ({ antiparasitics: [{ ...a, id: genId() }, ...s.antiparasitics] }));
+        void syncFrom(get());
+      },
 
-      removeAntiparasitic: (id) =>
-        set((s) => ({ antiparasitics: s.antiparasitics.filter((a) => a.id !== id) })),
+      removeAntiparasitic: (id) => {
+        set((s) => ({ antiparasitics: s.antiparasitics.filter((a) => a.id !== id) }));
+        void syncFrom(get());
+      },
 
-      addCheck: (c) =>
-        set((s) => ({ checks: [{ ...c, id: genId() }, ...s.checks] })),
+      addCheck: (c) => {
+        set((s) => ({ checks: [{ ...c, id: genId() }, ...s.checks] }));
+        void syncFrom(get());
+      },
 
-      removeCheck: (id) =>
-        set((s) => ({ checks: s.checks.filter((c) => c.id !== id) })),
+      removeCheck: (id) => {
+        set((s) => ({ checks: s.checks.filter((c) => c.id !== id) }));
+        void syncFrom(get());
+      },
+
+      syncNotifications: async () => {
+        await syncFrom(get());
+      },
     }),
     {
       name: 'uhmana-prevention',

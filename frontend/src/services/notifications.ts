@@ -119,7 +119,16 @@ export async function scheduleReminder(reminder: Reminder): Promise<void> {
 }
 
 export async function cancelAllReminders(): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  const all = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of all) {
+    if (!n.identifier?.startsWith('prev_')) {
+      try {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      } catch {
+        // ignore
+      }
+    }
+  }
 }
 
 export async function rescheduleAll(reminders: Reminder[]): Promise<void> {

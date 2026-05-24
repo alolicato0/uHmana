@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider } from '../src/context/AuthContext';
 import { setupNotifications } from '../src/services/notifications';
+import { usePreventionStore } from '../src/store/prevention';
 
 async function applyOtaIfAvailable() {
   if (__DEV__) return;
@@ -21,7 +22,12 @@ async function applyOtaIfAvailable() {
 
 export default function RootLayout() {
   useEffect(() => {
-    void setupNotifications();
+    void (async () => {
+      const granted = await setupNotifications();
+      if (granted) {
+        void usePreventionStore.getState().syncNotifications();
+      }
+    })();
     void applyOtaIfAvailable();
   }, []);
 

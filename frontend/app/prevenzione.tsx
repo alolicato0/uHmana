@@ -103,6 +103,16 @@ export default function PrevenzioneScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [expandedVaccine, setExpandedVaccine] = useState<string | null>(null);
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
+  const [sectionsOpen, setSectionsOpen] = useState<{ upcoming: boolean; vaccines: boolean; anti: boolean; checks: boolean }>({
+    upcoming: false,
+    vaccines: false,
+    anti: false,
+    checks: false,
+  });
+  const toggleSection = (key: 'upcoming' | 'vaccines' | 'anti' | 'checks') => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
+  };
 
   const [showVaccineModal, setShowVaccineModal] = useState(false);
   const [showAntiModal, setShowAntiModal] = useState(false);
@@ -226,6 +236,12 @@ export default function PrevenzioneScreen() {
       },
       () => {},
     );
+  }
+
+  function openAndScroll(key: 'upcoming' | 'vaccines' | 'anti' | 'checks', ref: React.RefObject<View | null>) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSectionsOpen((s) => ({ ...s, [key]: true }));
+    setTimeout(() => scrollToRef(ref), 60);
   }
 
   function saveVaccine() {
@@ -353,56 +369,38 @@ export default function PrevenzioneScreen() {
         </LinearGradient>
 
         <View style={styles.grid}>
-          <Pressable
-            style={styles.gridCell}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              scrollToRef(vaccinesRef);
-            }}
-          >
+          <Pressable style={styles.gridCell} onPress={() => openAndScroll('vaccines', vaccinesRef)}>
             <Text style={styles.gridEmoji}>💉</Text>
             <Text style={styles.gridCount}>{vaccines.length}</Text>
             <Text style={styles.gridLabel}>Vaccini</Text>
           </Pressable>
-          <Pressable
-            style={styles.gridCell}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              scrollToRef(antiparasiticsRef);
-            }}
-          >
+          <Pressable style={styles.gridCell} onPress={() => openAndScroll('anti', antiparasiticsRef)}>
             <Text style={styles.gridEmoji}>🦟</Text>
             <Text style={styles.gridCount}>{antiparasitics.length}</Text>
-            <Text style={styles.gridLabel}>Antiparassitari</Text>
+            <Text style={styles.gridLabel}>Antipar.</Text>
           </Pressable>
-          <Pressable
-            style={styles.gridCell}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              scrollToRef(checksRef);
-            }}
-          >
+          <Pressable style={styles.gridCell} onPress={() => openAndScroll('checks', checksRef)}>
             <Text style={styles.gridEmoji}>🩺</Text>
             <Text style={styles.gridCount}>{checks.length}</Text>
             <Text style={styles.gridLabel}>Controlli</Text>
           </Pressable>
-          <Pressable
-            style={styles.gridCell}
-            onPress={() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              scrollToRef(upcomingRef);
-            }}
-          >
+          <Pressable style={styles.gridCell} onPress={() => openAndScroll('upcoming', upcomingRef)}>
             <Text style={styles.gridEmoji}>📅</Text>
             <Text style={styles.gridCount}>{allUpcoming.length}</Text>
-            <Text style={styles.gridLabel}>In scadenza</Text>
+            <Text style={styles.gridLabel}>Scadenze</Text>
           </Pressable>
         </View>
 
         <View ref={upcomingRef} style={{ marginTop: 24 }}>
-          <Text style={styles.sectionTitle}>In arrivo</Text>
-          <View style={{ height: 10 }} />
-          {allUpcoming.length === 0 ? (
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('upcoming')}>
+            <Text style={styles.sectionTitle}>In arrivo</Text>
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{allUpcoming.length}</Text>
+              <Ionicons name={sectionsOpen.upcoming ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.upcoming && <View style={{ height: 10 }} />}
+          {sectionsOpen.upcoming && (allUpcoming.length === 0 ? (
             <View style={styles.emptyCard}>
               <Text style={styles.emptyText}>Nessuna scadenza programmata</Text>
             </View>
@@ -424,24 +422,28 @@ export default function PrevenzioneScreen() {
                 </View>
               );
             })
-          )}
+          ))}
         </View>
 
-        <View ref={vaccinesRef} style={{ marginTop: 28 }}>
-          <View style={styles.sectionRow}>
+        <View ref={vaccinesRef} style={{ marginTop: 24 }}>
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('vaccines')}>
             <Text style={styles.sectionTitle}>Vaccini</Text>
-            <Pressable
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowVaccineModal(true);
-              }}
-              hitSlop={8}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={ACCENT} />
-            </Pressable>
-          </View>
-          <View style={{ height: 10 }} />
-          {vaccines.length === 0 ? (
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{vaccines.length}</Text>
+              <Pressable
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowVaccineModal(true);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+              </Pressable>
+              <Ionicons name={sectionsOpen.vaccines ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.vaccines && <View style={{ height: 10 }} />}
+          {sectionsOpen.vaccines && (vaccines.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowVaccineModal(true)}>
               <Text style={styles.emptyText}>Nessun vaccino registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
@@ -517,24 +519,28 @@ export default function PrevenzioneScreen() {
                 </Pressable>
               );
             })
-          )}
+          ))}
         </View>
 
-        <View ref={antiparasiticsRef} style={{ marginTop: 28 }}>
-          <View style={styles.sectionRow}>
+        <View ref={antiparasiticsRef} style={{ marginTop: 24 }}>
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('anti')}>
             <Text style={styles.sectionTitle}>Protezione antiparassitaria</Text>
-            <Pressable
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowAntiModal(true);
-              }}
-              hitSlop={8}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={ACCENT} />
-            </Pressable>
-          </View>
-          <View style={{ height: 10 }} />
-          {antiparasitics.length === 0 ? (
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{antiparasitics.length}</Text>
+              <Pressable
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowAntiModal(true);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+              </Pressable>
+              <Ionicons name={sectionsOpen.anti ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.anti && <View style={{ height: 10 }} />}
+          {sectionsOpen.anti && (antiparasitics.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowAntiModal(true)}>
               <Text style={styles.emptyText}>Nessun trattamento registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
@@ -581,24 +587,28 @@ export default function PrevenzioneScreen() {
                 </Pressable>
               );
             })
-          )}
+          ))}
         </View>
 
-        <View ref={checksRef} style={{ marginTop: 28 }}>
-          <View style={styles.sectionRow}>
+        <View ref={checksRef} style={{ marginTop: 24 }}>
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('checks')}>
             <Text style={styles.sectionTitle}>Controlli preventivi</Text>
-            <Pressable
-              onPress={() => {
-                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowCheckModal(true);
-              }}
-              hitSlop={8}
-            >
-              <Ionicons name="add-circle-outline" size={24} color={ACCENT} />
-            </Pressable>
-          </View>
-          <View style={{ height: 10 }} />
-          {checks.length === 0 ? (
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{checks.length}</Text>
+              <Pressable
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowCheckModal(true);
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+              </Pressable>
+              <Ionicons name={sectionsOpen.checks ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.checks && <View style={{ height: 10 }} />}
+          {sectionsOpen.checks && (checks.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowCheckModal(true)}>
               <Text style={styles.emptyText}>Nessun controllo registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
@@ -668,7 +678,7 @@ export default function PrevenzioneScreen() {
                 </Pressable>
               );
             })
-          )}
+          ))}
         </View>
 
         <View style={[styles.insightCard, { marginTop: 28 }]}>
@@ -954,17 +964,17 @@ const styles = StyleSheet.create({
 
   grid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
     marginTop: 16,
   },
   gridCell: {
-    width: '47%',
+    flex: 1,
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     borderWidth: 1,
     borderColor: BORDER,
     shadowColor: '#000',
@@ -973,12 +983,35 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  gridEmoji: { fontSize: 22 },
-  gridCount: { fontSize: 22, fontWeight: '900', color: INK },
-  gridLabel: { fontSize: 11, color: MUTED, textAlign: 'center' },
+  gridEmoji: { fontSize: 18 },
+  gridCount: { fontSize: 18, fontWeight: '900', color: INK },
+  gridLabel: { fontSize: 10, color: MUTED, textAlign: 'center' },
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 15, fontWeight: '800', color: INK },
+  accordionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  accordionRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  accordionCount: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: MUTED,
+    backgroundColor: '#F4F6FB',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 99,
+    minWidth: 24,
+    textAlign: 'center',
+  },
 
   emptyCard: {
     backgroundColor: '#fff',
