@@ -197,7 +197,8 @@ export default function PianoSaluteScreen() {
   const removeReminder = useRemindersStore((s) => s.remove);
   const updateReminder = useRemindersStore((s) => s.update);
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
-  const isDefaultHuman = useMembersStore((s) => (id: string | null) => s.isDefault('human', id));
+  const isDefault = useMembersStore((s) => s.isDefault);
+  const isDefaultHuman = (id: string | null) => isDefault('human', id);
   const { pickMember, modalProps: memberPickerProps } = useMemberPicker('human');
   const records = useDoseStore((s) => s.records);
   const logDose = useDoseStore((s) => s.logDose);

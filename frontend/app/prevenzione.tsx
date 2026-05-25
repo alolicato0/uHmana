@@ -115,7 +115,8 @@ export default function PrevenzioneScreen() {
     usePreventionStore();
 
   const activePetId = useMembersStore((s) => s.activePetId);
-  const isDefaultPet = useMembersStore((s) => (id: string | null) => s.isDefault('pet', id));
+  const isDefault = useMembersStore((s) => s.isDefault);
+  const isDefaultPet = (id: string | null) => isDefault('pet', id);
 
   const { pickMember, modalProps: pickerProps } = useMemberPicker('pet');
 

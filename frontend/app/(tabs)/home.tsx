@@ -49,8 +49,9 @@ export default function HomeScreen() {
 
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
   const activePetId = useMembersStore((s) => s.activePetId);
-  const isDefaultHuman = useMembersStore((s) => (id: string | null) => s.isDefault('human', id));
-  const isDefaultPet = useMembersStore((s) => (id: string | null) => s.isDefault('pet', id));
+  const isDefault = useMembersStore((s) => s.isDefault);
+  const isDefaultHuman = (id: string | null) => isDefault('human', id);
+  const isDefaultPet = (id: string | null) => isDefault('pet', id);
 
   const upcoming: { id: string; title: string; time: string }[] =
     activeKind === 'pet'
