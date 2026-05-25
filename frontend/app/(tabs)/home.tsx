@@ -43,9 +43,14 @@ export default function HomeScreen() {
   const mode = getMode(activeKind);
 
   const reminders = useRemindersStore((s) => s.reminders);
+  const updateReminder = useRemindersStore((s) => s.update);
   const vaccines = usePreventionStore((s) => s.vaccines);
   const antis = usePreventionStore((s) => s.antiparasitics);
   const checks = usePreventionStore((s) => s.checks);
+  const setVaccineStatus = usePreventionStore((s) => s.setVaccineStatus);
+  const setAntiparasiticStatus = usePreventionStore((s) => s.setAntiparasiticStatus);
+  const setCheckStatus = usePreventionStore((s) => s.setCheckStatus);
+  const { getToken } = useAuth();
 
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
   const activePetId = useMembersStore((s) => s.activePetId);
@@ -53,19 +58,29 @@ export default function HomeScreen() {
   const isDefaultHuman = (id: string | null) => isDefault('human', id);
   const isDefaultPet = (id: string | null) => isDefault('pet', id);
 
-  const upcoming: { id: string; title: string; time: string }[] =
+  type StatusVal = 'done' | 'not_done' | 'postponed';
+  type UpcomingItem = {
+    id: string;
+    title: string;
+    time: string;
+    status?: StatusVal;
+    onSetStatus: (s: StatusVal) => void;
+  };
+
+  const upcoming: UpcomingItem[] =
     activeKind === 'pet'
       ? (() => {
-          const out: { id: string; title: string; iso: string; type: string }[] = [];
+          type Raw = { id: string; entityId: string; kind: 'v' | 'a' | 'c'; title: string; iso: string; type: string; status?: StatusVal };
+          const out: Raw[] = [];
           vaccines
             .filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet))
-            .forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, title: v.name, iso: v.nextDate, type: 'Vaccino' }));
+            .forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, entityId: v.id, kind: 'v', title: v.name, iso: v.nextDate, type: 'Vaccino', status: v.status }));
           antis
             .filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet))
-            .forEach((a) => out.push({ id: `a_${a.id}`, title: a.name, iso: a.nextDate, type: 'Antiparassitario' }));
+            .forEach((a) => out.push({ id: `a_${a.id}`, entityId: a.id, kind: 'a', title: a.name, iso: a.nextDate, type: 'Antiparassitario', status: a.status }));
           checks
             .filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet))
-            .forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, title: c.name, iso: c.nextDate, type: 'Controllo' }));
+            .forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, entityId: c.id, kind: 'c', title: c.name, iso: c.nextDate, type: 'Controllo', status: c.status }));
           return out
             .sort((x, y) => x.iso.localeCompare(y.iso))
             .slice(0, 3)
@@ -76,13 +91,28 @@ export default function HomeScreen() {
               now.setHours(0, 0, 0, 0);
               const days = Math.round((target.getTime() - now.getTime()) / 86400000);
               const when = days < 0 ? `scaduto ${Math.abs(days)}gg fa` : days === 0 ? 'oggi' : days === 1 ? 'domani' : `tra ${days}gg`;
-              return { id: it.id, title: `${it.title} · ${it.type}`, time: when };
+              const setter = it.kind === 'v' ? setVaccineStatus : it.kind === 'a' ? setAntiparasiticStatus : setCheckStatus;
+              return {
+                id: it.id,
+                title: `${it.title} · ${it.type}`,
+                time: when,
+                status: it.status,
+                onSetStatus: (s: StatusVal) => setter(it.entityId, s),
+              };
             });
         })()
       : reminders
           .filter((r) => r.enabled && belongsTo(r.memberId, activeHumanId, isDefaultHuman))
           .slice(0, 3)
-          .map((r) => ({ id: r.id, title: r.title, time: r.schedule.time ?? r.schedule.kind }));
+          .map((r) => ({
+            id: r.id,
+            title: r.title,
+            time: r.schedule.time ?? r.schedule.kind,
+            status: r.status,
+            onSetStatus: (s: StatusVal) => {
+              void updateReminder(r.id, { status: s }, getToken);
+            },
+          }));
 
   const seenIds = useNotifSeenStore((s) => s.seenIds);
   const notifIds: string[] =
@@ -218,6 +248,14 @@ function FamilySection({ kind, accent }: { kind: MemberKind; accent: string }) {
   );
 }
 
+type UpcomingItemForRow = {
+  id: string;
+  title: string;
+  time: string;
+  status?: 'done' | 'not_done' | 'postponed';
+  onSetStatus: (s: 'done' | 'not_done' | 'postponed') => void;
+};
+
 function UpcomingSection({
   title,
   items,
@@ -225,7 +263,7 @@ function UpcomingSection({
   accent,
 }: {
   title: string;
-  items: { id: string; title: string; time: string }[];
+  items: UpcomingItemForRow[];
   emptyText: string;
   accent: string;
 }) {
@@ -264,7 +302,13 @@ function UpcomingSection({
       {expanded && (
         <View style={{ marginTop: 12 }}>
           {items.map((r) => (
-            <ReminderRow key={r.id} title={r.title} time={r.time} />
+            <ReminderRow
+              key={r.id}
+              title={r.title}
+              time={r.time}
+              status={r.status}
+              onSetStatus={r.onSetStatus}
+            />
           ))}
         </View>
       )}
@@ -399,12 +443,47 @@ function EmergencyCta({ onPress }: { onPress: () => void }) {
   );
 }
 
-function ReminderRow({ title, time }: { title: string; time: string }) {
+function ReminderRow({
+  title,
+  time,
+  status,
+  onSetStatus,
+}: {
+  title: string;
+  time: string;
+  status?: 'done' | 'not_done' | 'postponed';
+  onSetStatus: (s: 'done' | 'not_done' | 'postponed') => void;
+}) {
+  const StatusIcon = ({ value, emoji, color }: { value: 'done' | 'not_done' | 'postponed'; emoji: string; color: string }) => {
+    const active = status === value;
+    return (
+      <Pressable
+        onPress={() => {
+          void Haptics.selectionAsync();
+          onSetStatus(value);
+        }}
+        hitSlop={6}
+        style={[
+          styles.statusIcon,
+          active && { backgroundColor: color, borderColor: color },
+        ]}
+      >
+        <Text style={{ fontSize: 14 }}>{emoji}</Text>
+      </Pressable>
+    );
+  };
   return (
     <View style={styles.reminderRow}>
       <Ionicons name="time-outline" size={18} color={colors.muted} />
-      <Text style={{ flex: 1, marginLeft: 10, fontWeight: '500' }}>{title}</Text>
-      <Text style={{ color: colors.muted }}>{time}</Text>
+      <View style={{ flex: 1, marginLeft: 10 }}>
+        <Text style={{ fontWeight: '500' }} numberOfLines={1}>{title}</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{time}</Text>
+      </View>
+      <View style={styles.statusIconRow}>
+        <StatusIcon value="done" emoji="✅" color="#DCFCE7" />
+        <StatusIcon value="not_done" emoji="❌" color="#FEE2E2" />
+        <StatusIcon value="postponed" emoji="⏰" color="#FEF3C7" />
+      </View>
     </View>
   );
 }
@@ -521,4 +600,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   countBadgeTxt: { fontSize: 12, fontWeight: '800' },
+  statusIconRow: { flexDirection: 'row', gap: 4, marginLeft: 6 },
+  statusIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#fff',
+  },
 });
