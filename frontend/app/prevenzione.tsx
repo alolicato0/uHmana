@@ -1483,4 +1483,29 @@ const styles = StyleSheet.create({
     borderColor: BORDER,
   },
   cancelBtnTxt: { fontWeight: '600', fontSize: 14, color: INK },
+
+  statusBtnRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 10,
+  },
+  statusBtn: {
+    borderRadius: 99,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  statusBtnTxt: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: INK,
+  },
+  postponedLabel: {
+    fontSize: 11,
+    color: ORANGE,
+    fontWeight: '600',
+    marginTop: 4,
+  },
 });
