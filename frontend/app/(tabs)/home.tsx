@@ -150,7 +150,7 @@ function FamilySection({ kind, accent }: { kind: MemberKind; accent: string }) {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={{ marginTop: 10 }}
+        style={{ marginTop: 6 }}
         contentContainerStyle={{ gap: 8, paddingRight: 8 }}
       >
         {(members as (HumanMember | PetMember)[]).map((m) => {
@@ -369,7 +369,7 @@ function EmergencyCta({ onPress }: { onPress: () => void }) {
       <Ionicons name="alert-circle" size={22} color={colors.danger} />
       <View style={{ flex: 1, marginLeft: 12 }}>
         <Text style={{ fontWeight: '700', color: colors.danger }}>È urgente?</Text>
-        <Text style={{ color: colors.muted, fontSize: 12 }}>Avvia una valutazione rapida AI</Text>
+        <Text style={{ color: colors.muted, fontSize: 11 }}>Avvia una valutazione rapida AI</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={colors.danger} />
     </Pressable>
@@ -402,9 +402,9 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   badgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
-  greeting: { fontSize: 22, fontWeight: '700', color: colors.ink },
-  subtitle: { color: colors.muted, marginTop: 4 },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: colors.ink },
+  greeting: { fontSize: 20, fontWeight: '700', color: colors.ink },
+  subtitle: { color: colors.muted, marginTop: 2, fontSize: 13 },
+  sectionTitle: { fontSize: 14, fontWeight: '600', color: colors.ink },
   emptyText: {
     color: colors.muted,
     fontSize: 13,
@@ -413,7 +413,7 @@ const styles = StyleSheet.create({
   },
   toggle: {
     flexDirection: 'row',
-    padding: 4,
+    padding: 3,
     borderRadius: radii.pill,
     backgroundColor: '#fff',
     borderWidth: 1,
@@ -421,24 +421,24 @@ const styles = StyleSheet.create({
   },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: radii.pill,
     alignItems: 'center',
   },
-  overview: { padding: 16 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  overview: { padding: 14 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tile: {
     flexGrow: 1,
     flexBasis: '47%',
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 12,
   },
   emergency: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 11,
     borderRadius: radii.lg,
     backgroundColor: colors.emergencySoft,
     borderWidth: 1,
@@ -466,7 +466,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
@@ -481,7 +481,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 14,
+    padding: 12,
     marginBottom: 8,
   },
   upcomingHeader: {
