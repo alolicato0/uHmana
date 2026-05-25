@@ -189,6 +189,7 @@ type FormState = {
   days: string;
   notes: string;
   startDate: string;
+  endDate: string;
 };
 
 export default function PianoSaluteScreen() {
@@ -212,9 +213,10 @@ export default function PianoSaluteScreen() {
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [postponeId, setPostponeId] = useState<string | null>(null);
   const [postponeDate, setPostponeDate] = useState('');
-  const [form, setForm] = useState<FormState>({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10) });
+  const [form, setForm] = useState<FormState>({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10), endDate: '' });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [pickH, setPickH] = useState(8);
   const [pickM, setPickM] = useState(0);
   const [intDismissed, setIntDismissed] = useState(false);
@@ -323,21 +325,44 @@ export default function PianoSaluteScreen() {
     const times = calcTimes(form.time, form.frequency);
     const today = new Date().toISOString().slice(0, 10);
     const startDate = form.startDate || today;
-    for (const t of times) {
-      await addReminder(
-        {
-          category: 'medication',
-          title,
-          notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
-          schedule: { kind: 'daily', time: t, date: startDate },
-          enabled: true,
-          memberId: picked.id ?? undefined,
-        },
-        getToken,
-      );
+    const endDate = form.endDate;
+    if (endDate && endDate > startDate) {
+      const cur = new Date(startDate);
+      const end = new Date(endDate);
+      while (cur <= end) {
+        const dayISO = cur.toISOString().slice(0, 10);
+        for (const t of times) {
+          await addReminder(
+            {
+              category: 'medication',
+              title,
+              notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
+              schedule: { kind: 'once', date: dayISO, time: t },
+              enabled: true,
+              memberId: picked.id ?? undefined,
+            },
+            getToken,
+          );
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+    } else {
+      for (const t of times) {
+        await addReminder(
+          {
+            category: 'medication',
+            title,
+            notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
+            schedule: { kind: 'daily', time: t, date: startDate },
+            enabled: true,
+            memberId: picked.id ?? undefined,
+          },
+          getToken,
+        );
+      }
     }
     setAddOpen(false);
-    setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10) });
+    setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10), endDate: '' });
   };
 
   const handleDeleteMed = (title: string, ids: string[]) => {
@@ -652,6 +677,25 @@ export default function PianoSaluteScreen() {
               <Ionicons name="chevron-down" size={16} color={colors.muted} style={{ marginLeft: 'auto' }} />
             </Pressable>
 
+            {/* Data fine */}
+            <Text style={styles.fieldLabel}>Data fine (opzionale)</Text>
+            <Pressable style={styles.timeBtn} onPress={() => setShowEndDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={18} color={form.endDate ? colors.primary : colors.muted} />
+              <Text style={[styles.timeBtnTxt, !form.endDate && { color: colors.muted, fontSize: 14, fontWeight: '400' }]}>
+                {form.endDate ? (() => {
+                  const [y, m, d] = form.endDate.split('-');
+                  const months = ['GEN','FEB','MAR','APR','MAG','GIU','LUG','AGO','SET','OTT','NOV','DIC'];
+                  return `${d} ${months[Number(m)-1]} ${y}`;
+                })() : 'Non impostata'}
+              </Text>
+              {form.endDate && (
+                <Pressable hitSlop={8} onPress={() => setForm(f => ({ ...f, endDate: '' }))} style={{ marginLeft: 'auto' }}>
+                  <Ionicons name="close-circle" size={18} color={colors.muted} />
+                </Pressable>
+              )}
+              {!form.endDate && <Ionicons name="chevron-down" size={16} color={colors.muted} style={{ marginLeft: 'auto' }} />}
+            </Pressable>
+
             {/* Orario — clock popup */}
             <Text style={styles.fieldLabel}>Primo orario</Text>
             <Pressable style={styles.timeBtn} onPress={openTimePicker}>
@@ -693,6 +737,15 @@ export default function PianoSaluteScreen() {
         onClose={() => setShowStartDatePicker(false)}
         accent={colors.primary}
         title="Data inizio terapia"
+      />
+
+      <DateWheelModal
+        visible={showEndDatePicker}
+        value={form.endDate || form.startDate}
+        onConfirm={(date) => { setForm((f) => ({ ...f, endDate: date })); setShowEndDatePicker(false); }}
+        onClose={() => setShowEndDatePicker(false)}
+        accent={colors.primary}
+        title="Data fine terapia"
       />
 
       <DateWheelModal

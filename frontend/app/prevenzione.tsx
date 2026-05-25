@@ -19,6 +19,7 @@ import { DateWheelModal } from '../src/components/DateWheelModal';
 import { MemberPickerModal } from '../src/components/MemberPickerModal';
 import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { SectionChatModal } from '../src/components/SectionChatModal';
+import { TimeWheelModal } from '../src/components/TimeWheelModal';
 import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { useMembersStore } from '../src/store/members';
 import { useProfileStore } from '../src/store/profile';
@@ -111,7 +112,7 @@ export default function PrevenzioneScreen() {
   const petProfile = profiles.find((p) => p.kind === 'pet');
   const petName = petProfile?.name ?? 'il tuo animale';
 
-  const { vaccines, antiparasitics, checks, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck, setVaccineStatus, setAntiparasiticStatus, setCheckStatus } =
+  const { vaccines, antiparasitics, checks, therapies, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck, addTherapy, removeTherapy, setVaccineStatus, setAntiparasiticStatus, setCheckStatus } =
     usePreventionStore();
 
   const activePetId = useMembersStore((s) => s.activePetId);
@@ -125,17 +126,19 @@ export default function PrevenzioneScreen() {
   const antiparasiticsRef = useRef<View>(null);
   const checksRef = useRef<View>(null);
   const upcomingRef = useRef<View>(null);
+  const therapyRef = useRef<View>(null);
 
   const [chatOpen, setChatOpen] = useState(false);
   const [expandedVaccine, setExpandedVaccine] = useState<string | null>(null);
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
-  const [sectionsOpen, setSectionsOpen] = useState<{ upcoming: boolean; vaccines: boolean; anti: boolean; checks: boolean }>({
+  const [sectionsOpen, setSectionsOpen] = useState<{ upcoming: boolean; vaccines: boolean; anti: boolean; checks: boolean; therapy: boolean }>({
     upcoming: false,
     vaccines: false,
     anti: false,
     checks: false,
+    therapy: false,
   });
-  const toggleSection = (key: 'upcoming' | 'vaccines' | 'anti' | 'checks') => {
+  const toggleSection = (key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy') => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
   };
@@ -172,6 +175,18 @@ export default function PrevenzioneScreen() {
   const [cNextDate, setCNextDate] = useState('');
   const [cVet, setCVet] = useState('');
   const [cNotes, setCNotes] = useState('');
+
+  const [showTherapyModal, setShowTherapyModal] = useState(false);
+  const [tName, setTName] = useState('');
+  const [tDose, setTDose] = useState('');
+  const [tFrequency, setTFrequency] = useState<'8h' | '12h' | '24h'>('24h');
+  const [tTime, setTTime] = useState('08:00');
+  const [tStartDate, setTStartDate] = useState('');
+  const [tEndDate, setTEndDate] = useState('');
+  const [tNotes, setTNotes] = useState('');
+  const [tErr, setTErr] = useState('');
+  const [showTherapyTimePicker, setShowTherapyTimePicker] = useState(false);
+  const [tPickerOpen, setTPickerOpen] = useState<null | 'tStart' | 'tEnd'>(null);
 
   const [postponeModal, setPostponeModal] = useState<{ kind: 'vaccine' | 'anti' | 'check'; id: string } | null>(null);
   const [postponeDate, setPostponeDate] = useState('');
@@ -212,6 +227,10 @@ export default function PrevenzioneScreen() {
   const filteredChecks = useMemo(
     () => checks.filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet)),
     [checks, activePetId, isDefaultPet],
+  );
+  const filteredTherapies = useMemo(
+    () => therapies.filter((t) => belongsTo(t.memberId, activePetId, isDefaultPet)),
+    [therapies, activePetId, isDefaultPet],
   );
 
   const allUpcoming: { name: string; nextDate: string; type: string }[] = [];
@@ -315,7 +334,7 @@ export default function PrevenzioneScreen() {
     );
   }
 
-  function openAndScroll(key: 'upcoming' | 'vaccines' | 'anti' | 'checks', ref: React.RefObject<View | null>) {
+  function openAndScroll(key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy', ref: React.RefObject<View | null>) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSectionsOpen((s) => ({ ...s, [key]: true }));
     setTimeout(() => scrollToRef(ref), 60);
@@ -437,6 +456,37 @@ export default function PrevenzioneScreen() {
     else if (confirmDel.kind === 'anti') removeAntiparasitic(confirmDel.id);
     else removeCheck(confirmDel.id);
     setConfirmDel(null);
+  }
+
+  function calcTimesLocal(firstTime: string, freq: '8h' | '12h' | '24h'): string[] {
+    const [h, m] = firstTime.split(':').map(Number);
+    const interval = freq === '8h' ? 8 : freq === '12h' ? 12 : 24;
+    const count = 24 / interval;
+    return Array.from({ length: count }, (_, i) => {
+      const totalMins = (h * 60 + m + i * interval * 60) % (24 * 60);
+      const th = Math.floor(totalMins / 60);
+      const tm = totalMins % 60;
+      return `${String(th).padStart(2, '0')}:${String(tm).padStart(2, '0')}`;
+    });
+  }
+
+  async function saveTherapy() {
+    if (!tName.trim() || !tStartDate) { setTErr('Inserisci nome e data inizio'); return; }
+    const picked = await pickMember();
+    if (picked.prompted && picked.id === null) return;
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    addTherapy({
+      name: tName.trim(),
+      dose: tDose.trim() || undefined,
+      frequency: tFrequency,
+      time: tTime,
+      startDate: tStartDate,
+      endDate: tEndDate || undefined,
+      notes: tNotes.trim() || undefined,
+      memberId: picked.id ?? undefined,
+    });
+    setTName(''); setTDose(''); setTFrequency('24h'); setTTime('08:00'); setTStartDate(''); setTEndDate(''); setTNotes(''); setTErr('');
+    setShowTherapyModal(false);
   }
 
   function antiProgress(a: Antiparasitic): number {
@@ -903,6 +953,52 @@ export default function PrevenzioneScreen() {
           ))}
         </View>
 
+        <View ref={therapyRef} style={{ marginTop: 24 }}>
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('therapy')}>
+            <Text style={styles.sectionTitle}>Terapia 💊</Text>
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{filteredTherapies.length}</Text>
+              <Pressable onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowTherapyModal(true); }} hitSlop={8}>
+                <Ionicons name="add-circle-outline" size={22} color={ACCENT} />
+              </Pressable>
+              <Ionicons name={sectionsOpen.therapy ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.therapy && <View style={{ height: 10 }} />}
+          {sectionsOpen.therapy && (filteredTherapies.length === 0 ? (
+            <Pressable style={styles.emptyCard} onPress={() => setShowTherapyModal(true)}>
+              <Text style={styles.emptyText}>Nessuna terapia attiva</Text>
+              <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
+            </Pressable>
+          ) : (
+            filteredTherapies.map((t) => {
+              const freqLabel = t.frequency === '8h' ? '3x/giorno' : t.frequency === '12h' ? '2x/giorno' : '1x/giorno';
+              const times = calcTimesLocal(t.time, t.frequency);
+              return (
+                <View key={t.id} style={styles.card}>
+                  <View style={styles.cardRow}>
+                    <View style={[styles.cardIcon, { backgroundColor: '#EDE9FE' }]}>
+                      <Text>💊</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>{t.name}{t.dose ? ` ${t.dose}` : ''}</Text>
+                      <Text style={styles.cardSub}>{freqLabel} · {times.join(', ')}</Text>
+                      {t.endDate ? (
+                        <Text style={[styles.cardSub, { marginTop: 2 }]}>{formatDateShort(t.startDate)} → {formatDateShort(t.endDate)}</Text>
+                      ) : (
+                        <Text style={[styles.cardSub, { marginTop: 2 }]}>Dal {formatDateShort(t.startDate)}</Text>
+                      )}
+                    </View>
+                    <Pressable hitSlop={8} onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); removeTherapy(t.id); }}>
+                      <Ionicons name="trash-outline" size={16} color={RED} />
+                    </Pressable>
+                  </View>
+                </View>
+              );
+            })
+          ))}
+        </View>
+
         <View style={[styles.insightCard, { marginTop: 28 }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Text style={{ fontSize: 16 }}>🧠</Text>
@@ -951,6 +1047,26 @@ export default function PrevenzioneScreen() {
         >
           <Text style={styles.quickActionEmoji}>🩺</Text>
           <Text style={styles.quickActionLabel}>Controllo</Text>
+        </Pressable>
+        <Pressable
+          style={styles.quickActionBtn}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowTherapyModal(true);
+          }}
+        >
+          <Text style={styles.quickActionEmoji}>💊</Text>
+          <Text style={styles.quickActionLabel}>Terapia</Text>
+        </Pressable>
+        <Pressable
+          style={styles.quickActionBtn}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowTherapyModal(true);
+          }}
+        >
+          <Text style={styles.quickActionEmoji}>💊</Text>
+          <Text style={styles.quickActionLabel}>Terapia</Text>
         </Pressable>
         <Pressable
           style={[styles.quickActionBtn, { backgroundColor: ACCENT }]}
@@ -1135,6 +1251,60 @@ export default function PrevenzioneScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
+      <Modal visible={showTherapyModal} transparent animationType="slide" onRequestClose={() => { setShowTherapyModal(false); setTErr(''); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <Pressable style={styles.modalOverlay} onPress={() => { setShowTherapyModal(false); setTErr(''); }} />
+          <ScrollView style={styles.modalSheet} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+            <View style={styles.sheetHandle} />
+            <Text style={styles.modalTitle}>Nuova terapia</Text>
+            <Text style={styles.modalSub}>Farmaco o cura per {petName}</Text>
+            {tErr ? <Text style={styles.modalErr}>{tErr}</Text> : null}
+
+            <TextInput style={styles.modalInput} value={tName} onChangeText={setTName} placeholder="Nome farmaco (es. Antibiotico)" placeholderTextColor={MUTED} />
+            <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={tDose} onChangeText={setTDose} placeholder="Dose — opzionale (es. 250mg)" placeholderTextColor={MUTED} />
+
+            <View style={[styles.chipRow, { marginTop: 10 }]}>
+              {([{ value: '24h', label: '1x/giorno' }, { value: '12h', label: '2x/giorno' }, { value: '8h', label: '3x/giorno' }] as const).map((opt) => (
+                <Pressable key={opt.value} style={[styles.typeChip, tFrequency === opt.value && { backgroundColor: ACCENT, borderColor: ACCENT }]}
+                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTFrequency(opt.value); }}>
+                  <Text style={[styles.typeChipTxt, tFrequency === opt.value && { color: '#fff' }]}>{opt.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable style={[styles.modalInput, { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }]} onPress={() => setShowTherapyTimePicker(true)}>
+              <Ionicons name="time-outline" size={18} color={ACCENT} />
+              <Text style={styles.modalInputTxt}>Primo orario: {tTime}</Text>
+            </Pressable>
+
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setTPickerOpen('tStart')}>
+              <Text style={tStartDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {tStartDate ? `Inizio: ${formatDateShort(tStartDate)}` : 'Data inizio terapia *'}
+              </Text>
+            </Pressable>
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setTPickerOpen('tEnd')}>
+              <Text style={tEndDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {tEndDate ? `Fine: ${formatDateShort(tEndDate)}` : 'Data fine terapia — opzionale'}
+              </Text>
+            </Pressable>
+            {tEndDate ? (
+              <Pressable onPress={() => setTEndDate('')} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
+                <Text style={{ fontSize: 11, color: MUTED }}>Rimuovi data fine ✕</Text>
+              </Pressable>
+            ) : null}
+
+            <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={tNotes} onChangeText={setTNotes} placeholder="Note — opzionale" placeholderTextColor={MUTED} />
+            <View style={{ height: 16 }} />
+            <Pressable style={[styles.saveBtn, { backgroundColor: ACCENT }]} onPress={saveTherapy}>
+              <Text style={styles.saveBtnTxt}>Salva terapia</Text>
+            </Pressable>
+            <Pressable style={styles.cancelBtn} onPress={() => { setShowTherapyModal(false); setTErr(''); }}>
+              <Text style={styles.cancelBtnTxt}>Annulla</Text>
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <Modal visible={confirmDel !== null} transparent animationType="slide" onRequestClose={() => setConfirmDel(null)}>
         <Pressable style={styles.modalOverlay} onPress={() => setConfirmDel(null)} />
         <View style={styles.modalSheet}>
@@ -1153,6 +1323,77 @@ export default function PrevenzioneScreen() {
           </Pressable>
         </View>
       </Modal>
+
+      <Modal visible={showTherapyModal} transparent animationType="slide" onRequestClose={() => { setShowTherapyModal(false); setTErr(''); }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <Pressable style={styles.modalOverlay} onPress={() => { setShowTherapyModal(false); setTErr(''); }} />
+          <ScrollView style={styles.modalSheet} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+            <View style={styles.sheetHandle} />
+            <Text style={styles.modalTitle}>Nuova terapia</Text>
+            <Text style={styles.modalSub}>Farmaco o cura per {petName}</Text>
+            {tErr ? <Text style={styles.modalErr}>{tErr}</Text> : null}
+
+            <TextInput style={styles.modalInput} value={tName} onChangeText={setTName} placeholder="Nome farmaco (es. Antibiotico)" placeholderTextColor={MUTED} />
+            <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={tDose} onChangeText={setTDose} placeholder="Dose — opzionale (es. 250mg)" placeholderTextColor={MUTED} />
+
+            <View style={[styles.chipRow, { marginTop: 10 }]}>
+              {([{ value: '24h', label: '1x/giorno' }, { value: '12h', label: '2x/giorno' }, { value: '8h', label: '3x/giorno' }] as const).map((opt) => (
+                <Pressable key={opt.value} style={[styles.typeChip, tFrequency === opt.value && { backgroundColor: ACCENT, borderColor: ACCENT }]}
+                  onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTFrequency(opt.value); }}>
+                  <Text style={[styles.typeChipTxt, tFrequency === opt.value && { color: '#fff' }]}>{opt.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Pressable style={[styles.modalInput, { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }]} onPress={() => setShowTherapyTimePicker(true)}>
+              <Ionicons name="time-outline" size={18} color={ACCENT} />
+              <Text style={styles.modalInputTxt}>Primo orario: {tTime}</Text>
+            </Pressable>
+
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setTPickerOpen('tStart')}>
+              <Text style={tStartDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {tStartDate ? `Inizio: ${formatDateShort(tStartDate)}` : 'Data inizio terapia *'}
+              </Text>
+            </Pressable>
+            <Pressable style={[styles.modalInput, { marginTop: 10 }]} onPress={() => setTPickerOpen('tEnd')}>
+              <Text style={tEndDate ? styles.modalInputTxt : styles.modalInputPh}>
+                {tEndDate ? `Fine: ${formatDateShort(tEndDate)}` : 'Data fine terapia — opzionale'}
+              </Text>
+            </Pressable>
+            {tEndDate ? (
+              <Pressable onPress={() => setTEndDate('')} style={{ alignSelf: 'flex-end', marginTop: 4 }}>
+                <Text style={{ fontSize: 11, color: MUTED }}>Rimuovi data fine ✕</Text>
+              </Pressable>
+            ) : null}
+
+            <TextInput style={[styles.modalInput, { marginTop: 10 }]} value={tNotes} onChangeText={setTNotes} placeholder="Note — opzionale" placeholderTextColor={MUTED} />
+            <View style={{ height: 16 }} />
+            <Pressable style={[styles.saveBtn, { backgroundColor: ACCENT }]} onPress={saveTherapy}>
+              <Text style={styles.saveBtnTxt}>Salva terapia</Text>
+            </Pressable>
+            <Pressable style={styles.cancelBtn} onPress={() => { setShowTherapyModal(false); setTErr(''); }}>
+              <Text style={styles.cancelBtnTxt}>Annulla</Text>
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <DateWheelModal
+        visible={tPickerOpen !== null}
+        value={tPickerOpen === 'tStart' ? (tStartDate || new Date().toISOString().slice(0, 10)) : (tEndDate || tStartDate || new Date().toISOString().slice(0, 10))}
+        title={tPickerOpen === 'tStart' ? 'Data inizio terapia' : 'Data fine terapia'}
+        accent={ACCENT}
+        onConfirm={(date) => { if (tPickerOpen === 'tStart') setTStartDate(date); else setTEndDate(date); setTPickerOpen(null); }}
+        onClose={() => setTPickerOpen(null)}
+      />
+
+      <TimeWheelModal
+        visible={showTherapyTimePicker}
+        value={tTime}
+        onConfirm={(t) => { setTTime(t); setShowTherapyTimePicker(false); }}
+        onClose={() => setShowTherapyTimePicker(false)}
+        accent={ACCENT}
+      />
 
       <DateWheelModal
         visible={postponeModal !== null}
@@ -1186,6 +1427,23 @@ export default function PrevenzioneScreen() {
         accent={ACCENT}
         onConfirm={setPickedDate}
         onClose={() => setPickerOpen(null)}
+      />
+
+      <DateWheelModal
+        visible={tPickerOpen !== null}
+        value={tPickerOpen === 'tStart' ? (tStartDate || new Date().toISOString().slice(0, 10)) : (tEndDate || tStartDate || new Date().toISOString().slice(0, 10))}
+        title={tPickerOpen === 'tStart' ? 'Data inizio terapia' : 'Data fine terapia'}
+        accent={ACCENT}
+        onConfirm={(date) => { if (tPickerOpen === 'tStart') setTStartDate(date); else setTEndDate(date); setTPickerOpen(null); }}
+        onClose={() => setTPickerOpen(null)}
+      />
+
+      <TimeWheelModal
+        visible={showTherapyTimePicker}
+        value={tTime}
+        onConfirm={(t) => { setTTime(t); setShowTherapyTimePicker(false); }}
+        onClose={() => setShowTherapyTimePicker(false)}
+        accent={ACCENT}
       />
 
       <MemberPickerModal {...pickerProps} accent={ACCENT} />

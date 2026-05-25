@@ -40,10 +40,23 @@ export interface PreventiveCheck {
   postponedUntil?: string;
 }
 
+export interface PetTherapy {
+  id: string;
+  name: string;
+  dose?: string;
+  frequency: '8h' | '12h' | '24h';
+  time: string;
+  startDate: string;
+  endDate?: string;
+  notes?: string;
+  memberId?: string;
+}
+
 interface PreventionState {
   vaccines: Vaccine[];
   antiparasitics: Antiparasitic[];
   checks: PreventiveCheck[];
+  therapies: PetTherapy[];
   addVaccine: (v: Omit<Vaccine, 'id'>) => void;
   updateVaccine: (id: string, v: Omit<Vaccine, 'id'>) => void;
   removeVaccine: (id: string) => void;
@@ -53,6 +66,8 @@ interface PreventionState {
   addCheck: (c: Omit<PreventiveCheck, 'id'>) => void;
   updateCheck: (id: string, c: Omit<PreventiveCheck, 'id'>) => void;
   removeCheck: (id: string) => void;
+  addTherapy: (t: Omit<PetTherapy, 'id'>) => void;
+  removeTherapy: (id: string) => void;
   updateVaccineNotes: (id: string, notes: string) => void;
   updateAntiparasiticNotes: (id: string, notes: string) => void;
   updateCheckNotes: (id: string, notes: string) => void;
@@ -64,9 +79,9 @@ interface PreventionState {
 
 const genId = () => Math.random().toString(36).slice(2);
 
-async function syncFrom(state: Pick<PreventionState, 'vaccines' | 'antiparasitics' | 'checks'>) {
+async function syncFrom(state: Pick<PreventionState, 'vaccines' | 'antiparasitics' | 'checks' | 'therapies'>) {
   try {
-    await rescheduleAllPrevention(state.vaccines, state.antiparasitics, state.checks);
+    await rescheduleAllPrevention(state.vaccines, state.antiparasitics, state.checks, state.therapies);
   } catch {
     // ignore notification failures
   }
@@ -78,6 +93,7 @@ export const usePreventionStore = create<PreventionState>()(
       vaccines: [],
       antiparasitics: [],
       checks: [],
+      therapies: [],
 
       addVaccine: (v) => {
         set((s) => ({ vaccines: [{ ...v, id: genId() }, ...s.vaccines] }));
@@ -121,6 +137,16 @@ export const usePreventionStore = create<PreventionState>()(
 
       removeCheck: (id) => {
         set((s) => ({ checks: s.checks.filter((c) => c.id !== id) }));
+        void syncFrom(get());
+      },
+
+      addTherapy: (t) => {
+        set((s) => ({ therapies: [{ ...t, id: genId() }, ...s.therapies] }));
+        void syncFrom(get());
+      },
+
+      removeTherapy: (id) => {
+        set((s) => ({ therapies: s.therapies.filter((x) => x.id !== id) }));
         void syncFrom(get());
       },
 
