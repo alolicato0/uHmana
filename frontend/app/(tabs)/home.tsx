@@ -5,6 +5,7 @@ import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DateWheelModal } from '../../src/components/DateWheelModal';
 import { AddMemberModal, MemberSwitcher } from '../../src/components/MemberSwitcher';
 import { getMode, type FeatureTileConfig, type ModeConfig } from '../../src/config/modeConfig';
 import { useAuth } from '../../src/context/AuthContext';
@@ -35,7 +36,7 @@ import { colors, radii } from '../../src/theme';
 import type { ProfileKind } from '../../src/types';
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, getToken } = useAuth();
   const activeKind = useProfileStore((s) => s.activeKind);
   const setKind = useProfileStore((s) => s.setActiveKind);
   const getProfile = useProfileStore((s) => s.getActiveProfile);
@@ -50,7 +51,8 @@ export default function HomeScreen() {
   const setVaccineStatus = usePreventionStore((s) => s.setVaccineStatus);
   const setAntiparasiticStatus = usePreventionStore((s) => s.setAntiparasiticStatus);
   const setCheckStatus = usePreventionStore((s) => s.setCheckStatus);
-  const { getToken } = useAuth();
+  const setLocalReminderStatus = useRemindersStore((s) => s.setLocalStatus);
+  const [postponeCallback, setPostponeCallback] = useState<((date: string) => void) | null>(null);
 
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
   const activePetId = useMembersStore((s) => s.activePetId);
@@ -65,6 +67,7 @@ export default function HomeScreen() {
     time: string;
     status?: StatusVal;
     onSetStatus: (s: StatusVal) => void;
+    onRequestPostpone: () => void;
   };
 
   const upcoming: UpcomingItem[] =
@@ -97,7 +100,8 @@ export default function HomeScreen() {
                 title: `${it.title} · ${it.type}`,
                 time: when,
                 status: it.status,
-                onSetStatus: (s: StatusVal) => setter(it.entityId, s),
+                onSetStatus: (s: StatusVal) => { if (s !== 'postponed') setter(it.entityId, s); },
+                onRequestPostpone: () => setPostponeCallback(() => (date: string) => setter(it.entityId, 'postponed', date)),
               };
             });
         })()
@@ -110,8 +114,14 @@ export default function HomeScreen() {
             time: r.schedule.time ?? r.schedule.kind,
             status: r.status,
             onSetStatus: (s: StatusVal) => {
+              if (s === 'postponed') return;
+              setLocalReminderStatus(r.id, s);
               void updateReminder(r.id, { status: s }, getToken);
             },
+            onRequestPostpone: () => setPostponeCallback(() => (date: string) => {
+              setLocalReminderStatus(r.id, 'postponed');
+              void updateReminder(r.id, { status: 'postponed', postponedUntil: date }, getToken);
+            }),
           }));
 
   const seenIds = useNotifSeenStore((s) => s.seenIds);
@@ -176,6 +186,14 @@ export default function HomeScreen() {
           accent={mode.primary}
         />
       </ScrollView>
+      <DateWheelModal
+        visible={postponeCallback !== null}
+        value=""
+        onConfirm={(date) => { postponeCallback?.(date); setPostponeCallback(null); }}
+        onClose={() => setPostponeCallback(null)}
+        accent="#F59E0B"
+        title="Riprogramma appuntamento"
+      />
     </SafeAreaView>
   );
 }
@@ -254,6 +272,7 @@ type UpcomingItemForRow = {
   time: string;
   status?: 'done' | 'not_done' | 'postponed';
   onSetStatus: (s: 'done' | 'not_done' | 'postponed') => void;
+  onRequestPostpone: () => void;
 };
 
 function UpcomingSection({
@@ -308,6 +327,7 @@ function UpcomingSection({
               time={r.time}
               status={r.status}
               onSetStatus={r.onSetStatus}
+              onRequestPostpone={r.onRequestPostpone}
             />
           ))}
         </View>
@@ -448,11 +468,13 @@ function ReminderRow({
   time,
   status,
   onSetStatus,
+  onRequestPostpone,
 }: {
   title: string;
   time: string;
   status?: 'done' | 'not_done' | 'postponed';
   onSetStatus: (s: 'done' | 'not_done' | 'postponed') => void;
+  onRequestPostpone: () => void;
 }) {
   const StatusIcon = ({ value, emoji, color }: { value: 'done' | 'not_done' | 'postponed'; emoji: string; color: string }) => {
     const active = status === value;
@@ -460,7 +482,11 @@ function ReminderRow({
       <Pressable
         onPress={() => {
           void Haptics.selectionAsync();
-          onSetStatus(value);
+          if (value === 'postponed') {
+            onRequestPostpone();
+          } else {
+            onSetStatus(value);
+          }
         }}
         hitSlop={6}
         style={[

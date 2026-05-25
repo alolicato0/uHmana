@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { DateWheelModal } from '../src/components/DateWheelModal';
 import { MemberPickerModal } from '../src/components/MemberPickerModal';
 import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { useAuth } from '../src/context/AuthContext';
@@ -205,6 +206,8 @@ export default function PianoSaluteScreen() {
   const getWeekAdherence = useDoseStore((s) => s.getWeekAdherence);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [oggiExpanded, setOggiExpanded] = useState(true);
+  const [selectedReminderId, setSelectedReminderId] = useState<string | null>(null);
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [postponeId, setPostponeId] = useState<string | null>(null);
   const [postponeDate, setPostponeDate] = useState('');
@@ -281,10 +284,6 @@ export default function PianoSaluteScreen() {
     }
   };
 
-  const cycleTimelineDose = (rid: string, time: string, current: DoseAction | undefined) => {
-    const next: DoseAction = !current || current === 'postponed' ? 'taken' : current === 'taken' ? 'skipped' : 'postponed';
-    handleDose(rid, next, time);
-  };
 
   useEffect(() => {
     if (!showTimePicker) return;
@@ -353,25 +352,15 @@ export default function PianoSaluteScreen() {
     ]);
   };
 
-  const handleStatusChange = async (id: string, status: 'done' | 'not_done') => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await updateReminder(id, { status }, getToken);
-  };
-
-  const openPostpone = (id: string) => {
-    setPostponeId(id);
-    setPostponeDate('');
-    setPostponeOpen(true);
-  };
-
-  const confirmPostpone = async () => {
+  const confirmPostpone = async (date: string) => {
     if (!postponeId) return;
-    await updateReminder(postponeId, { status: 'postponed', postponedUntil: postponeDate }, getToken);
+    await updateReminder(postponeId, { status: 'postponed', postponedUntil: date }, getToken);
     setPostponeOpen(false);
     setPostponeId(null);
   };
 
-  const upcomingRec = upcoming ? todayRecs.find((x) => x.reminderId === upcoming.id) : null;
+  const heroMed = selectedReminderId ? medications.find((r) => r.id === selectedReminderId) ?? upcoming : upcoming;
+  const upcomingRec = heroMed ? todayRecs.find((x) => x.reminderId === heroMed.id) : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['bottom']}>
@@ -398,7 +387,7 @@ export default function PianoSaluteScreen() {
         )}
 
         {/* 1. Hero — prossima dose */}
-        {upcoming ? (
+        {heroMed ? (
           <LinearGradient colors={['#0DB09E', '#5B7CFA']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
             {upcomingRec && (
               <View style={styles.heroStateBadge}>
@@ -408,11 +397,11 @@ export default function PianoSaluteScreen() {
               </View>
             )}
             <Text style={styles.heroLabel}>💊 Terapia in corso</Text>
-            <Text style={styles.heroMed}>{upcoming.title}</Text>
+            <Text style={styles.heroMed}>{heroMed.title}</Text>
             <View style={styles.heroInfoRow}>
               <View style={styles.heroInfoPill}>
                 <Ionicons name="time-outline" size={13} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.heroInfoText}>Prossima dose: {upcoming.schedule.time ?? '--:--'}</Text>
+                <Text style={styles.heroInfoText}>Prossima dose: {heroMed.schedule.time ?? '--:--'}</Text>
               </View>
             </View>
             <View style={styles.heroBtnRow}>
@@ -424,21 +413,21 @@ export default function PianoSaluteScreen() {
                   <>
                     <Pressable
                       style={[styles.heroBtn, taken ? styles.heroBtnTakenActive : styles.heroBtnTaken]}
-                      onPress={() => handleDose(upcoming.id, 'taken', upcoming.schedule.time ?? '')}
+                      onPress={() => handleDose(heroMed.id, 'taken', heroMed.schedule.time ?? '')}
                     >
                       <Ionicons name="checkmark" size={14} color={taken ? '#fff' : '#0DB09E'} />
                       <Text style={[styles.heroBtnTxt, { color: taken ? '#fff' : '#0DB09E' }]}>Presa</Text>
                     </Pressable>
                     <Pressable
                       style={[styles.heroBtn, skipped ? styles.heroBtnSkippedActive : styles.heroBtnOutline]}
-                      onPress={() => handleDose(upcoming.id, 'skipped', upcoming.schedule.time ?? '')}
+                      onPress={() => handleDose(heroMed.id, 'skipped', heroMed.schedule.time ?? '')}
                     >
                       <Ionicons name="close" size={14} color="#fff" />
                       <Text style={[styles.heroBtnTxt, { color: '#fff' }]}>{skipped ? 'Saltata' : 'Salta'}</Text>
                     </Pressable>
                     <Pressable
                       style={[styles.heroBtn, postponed ? styles.heroBtnPostponedActive : styles.heroBtnOutline]}
-                      onPress={() => handleDose(upcoming.id, 'postponed', upcoming.schedule.time ?? '')}
+                      onPress={() => handleDose(heroMed.id, 'postponed', heroMed.schedule.time ?? '')}
                     >
                       <Ionicons name="time-outline" size={14} color="#fff" />
                       <Text style={[styles.heroBtnTxt, { color: '#fff' }]}>{postponed ? 'Rimandata' : 'Rimanda'}</Text>
@@ -478,9 +467,6 @@ export default function PianoSaluteScreen() {
             {medGroups.map((group, idx) => {
               const color = MED_COLORS[idx % MED_COLORS.length];
               const todayRecForGroup = todayRecs.find((x) => group.reminders.some((r) => r.id === x.reminderId));
-              // Use the first reminder in the group for status
-              const firstReminder = group.reminders[0];
-              const currentStatus = firstReminder?.status;
               return (
                 <View key={group.title} style={{ marginBottom: 6 }}>
                   <View style={[styles.medCard, { marginBottom: 0 }]}>
@@ -511,32 +497,6 @@ export default function PianoSaluteScreen() {
                       <Ionicons name="trash-outline" size={18} color="#EF4444" />
                     </Pressable>
                   </View>
-                  {/* Status buttons */}
-                  {firstReminder && (
-                    <View style={styles.statusRow}>
-                      <Pressable
-                        style={[styles.statusPill, { backgroundColor: currentStatus === 'done' ? '#22C55E' : '#F0FDF4', borderColor: '#22C55E' }]}
-                        onPress={() => handleStatusChange(firstReminder.id, 'done')}
-                      >
-                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'done' ? '#fff' : '#22C55E' }]}>✅ Fatto</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.statusPill, { backgroundColor: currentStatus === 'not_done' ? '#EF4444' : '#FFF5F5', borderColor: '#EF4444' }]}
-                        onPress={() => handleStatusChange(firstReminder.id, 'not_done')}
-                      >
-                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'not_done' ? '#fff' : '#EF4444' }]}>❌ Non fatto</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.statusPill, { backgroundColor: currentStatus === 'postponed' ? '#F59E0B' : '#FFFBEB', borderColor: '#F59E0B' }]}
-                        onPress={() => openPostpone(firstReminder.id)}
-                      >
-                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'postponed' ? '#fff' : '#F59E0B' }]}>⏰ Rimandato</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                  {firstReminder?.status === 'postponed' && firstReminder.postponedUntil ? (
-                    <Text style={styles.postponedUntilTxt}>Rimandato al: {firstReminder.postponedUntil}</Text>
-                  ) : null}
                 </View>
               );
             })}
@@ -546,38 +506,46 @@ export default function PianoSaluteScreen() {
         {/* Timeline giornaliera */}
         {medications.length > 0 && (
           <View style={{ marginTop: 14 }}>
-            <Text style={styles.sectionTitle}>Oggi</Text>
-            <View style={styles.timelineCard}>
-              {(['morning', 'afternoon', 'evening'] as const).map((slot) => {
-                const meds = slotGroups[slot];
-                if (meds.length === 0) return null;
-                return (
-                  <View key={slot} style={styles.timelineSlot}>
-                    <Text style={styles.timelineSlotLabel}>{SLOT_LABELS[slot]}</Text>
-                    {meds.map((r, i) => {
-                      const rec = todayRecs.find((x) => x.reminderId === r.id);
-                      return (
-                        <View key={r.id} style={[styles.timelineRow, i < meds.length - 1 && styles.timelineRowBorder]}>
-                          <Text style={styles.timelineTime}>{r.schedule.time}</Text>
-                          <View style={styles.timelineDot} />
-                          <Text style={styles.timelineName}>{r.title}</Text>
-                          <Pressable
-                            onPress={() => cycleTimelineDose(r.id, r.schedule.time ?? '', rec?.action)}
-                            hitSlop={8}
-                          >
-                            <Ionicons
-                              name={!rec ? 'ellipse-outline' : rec.action === 'taken' ? 'checkmark-circle' : rec.action === 'skipped' ? 'close-circle' : 'time'}
-                              size={24}
-                              color={!rec ? '#D1D5DB' : rec.action === 'taken' ? '#16A34A' : rec.action === 'skipped' ? '#EF4444' : '#F59E0B'}
-                            />
-                          </Pressable>
-                        </View>
-                      );
-                    })}
-                  </View>
-                );
-              })}
-            </View>
+            <Pressable onPress={() => setOggiExpanded(v => !v)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={styles.sectionTitle}>Oggi</Text>
+              <Ionicons name={oggiExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} style={{ marginLeft: 8 }} />
+            </Pressable>
+            {oggiExpanded && (
+              <View style={styles.timelineCard}>
+                {(['morning', 'afternoon', 'evening'] as const).map((slot) => {
+                  const meds = slotGroups[slot];
+                  if (meds.length === 0) return null;
+                  return (
+                    <View key={slot} style={styles.timelineSlot}>
+                      <Text style={styles.timelineSlotLabel}>{SLOT_LABELS[slot]}</Text>
+                      {meds.map((r, i) => {
+                        return (
+                          <View key={r.id} style={[styles.timelineRow, i < meds.length - 1 && styles.timelineRowBorder]}>
+                            <Text style={styles.timelineTime}>{r.schedule.time}</Text>
+                            <View style={styles.timelineDot} />
+                            <Text style={styles.timelineName}>{r.title}</Text>
+                            <Pressable
+                              onPress={() => { void Haptics.selectionAsync(); setSelectedReminderId(r.id); }}
+                              hitSlop={8}
+                            >
+                              <View style={{
+                                width: 24, height: 24, borderRadius: 12,
+                                borderWidth: 2,
+                                borderColor: selectedReminderId === r.id ? '#0DB09E' : '#D1D5DB',
+                                backgroundColor: selectedReminderId === r.id ? '#0DB09E' : 'transparent',
+                                alignItems: 'center', justifyContent: 'center',
+                              }}>
+                                {selectedReminderId === r.id && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' }} />}
+                              </View>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 
@@ -702,29 +670,14 @@ export default function PianoSaluteScreen() {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Postpone date modal */}
-      <Modal visible={postponeOpen} transparent animationType="slide" onRequestClose={() => setPostponeOpen(false)}>
-        <Pressable style={styles.backdrop} onPress={() => setPostponeOpen(false)} />
-        <View style={styles.sheet}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.sheetTitle}>Rimanda a…</Text>
-          <Text style={styles.fieldLabel}>Data (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="YYYY-MM-DD"
-            value={postponeDate}
-            onChangeText={setPostponeDate}
-            keyboardType="numeric"
-          />
-          <Pressable
-            style={[styles.sheetBtn, { backgroundColor: '#F59E0B' }, !postponeDate.trim() && { opacity: 0.45 }]}
-            onPress={confirmPostpone}
-            disabled={!postponeDate.trim()}
-          >
-            <Text style={styles.sheetBtnTxt}>Conferma</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      <DateWheelModal
+        visible={postponeOpen}
+        value={postponeDate}
+        onConfirm={(date) => { setPostponeDate(date); void confirmPostpone(date); }}
+        onClose={() => setPostponeOpen(false)}
+        accent="#F59E0B"
+        title="Riprogramma appuntamento"
+      />
 
       <MemberPickerModal {...memberPickerProps} accent={colors.primary} />
     </SafeAreaView>

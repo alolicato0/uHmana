@@ -17,6 +17,7 @@ interface RemindersState {
   add: (r: Omit<Reminder, 'id'>, getToken: GetToken) => Promise<void>;
   update: (id: string, r: Partial<Omit<Reminder, 'id'>>, getToken: GetToken) => Promise<void>;
   remove: (id: string, getToken: GetToken) => Promise<void>;
+  setLocalStatus: (id: string, status: 'done' | 'not_done' | 'postponed', postponedUntil?: string) => void;
 }
 
 async function syncNotifications(reminders: Reminder[]) {
@@ -65,5 +66,11 @@ export const useRemindersStore = create<RemindersState>((set, get) => ({
     const reminders = get().reminders.filter((r) => r.id !== id);
     set({ reminders });
     await syncNotifications(reminders);
+  },
+
+  setLocalStatus: (id, status, postponedUntil) => {
+    set((s) => ({
+      reminders: s.reminders.map((r) => r.id === id ? { ...r, status, postponedUntil } : r),
+    }));
   },
 }));

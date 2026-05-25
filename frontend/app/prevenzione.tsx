@@ -1154,40 +1154,21 @@ export default function PrevenzioneScreen() {
         </View>
       </Modal>
 
-      <Modal visible={postponeModal !== null} transparent animationType="slide" onRequestClose={() => setPostponeModal(null)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setPostponeModal(null)} />
-        <View style={styles.modalSheet}>
-          <View style={styles.sheetHandle} />
-          <Text style={styles.modalTitle}>Rimanda appuntamento</Text>
-          <Text style={styles.modalSub}>Inserisci la nuova data (YYYY-MM-DD)</Text>
-          <TextInput
-            style={styles.modalInput}
-            value={postponeDate}
-            onChangeText={setPostponeDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={MUTED}
-            keyboardType="numbers-and-punctuation"
-            autoFocus
-          />
-          <View style={{ height: 16 }} />
-          <Pressable
-            style={[styles.saveBtn, { backgroundColor: ORANGE }]}
-            onPress={() => {
-              if (!postponeModal) return;
-              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              if (postponeModal.kind === 'vaccine') setVaccineStatus(postponeModal.id, 'postponed', postponeDate || undefined);
-              else if (postponeModal.kind === 'anti') setAntiparasiticStatus(postponeModal.id, 'postponed', postponeDate || undefined);
-              else setCheckStatus(postponeModal.id, 'postponed', postponeDate || undefined);
-              setPostponeModal(null);
-            }}
-          >
-            <Text style={styles.saveBtnTxt}>Conferma rinvio</Text>
-          </Pressable>
-          <Pressable style={styles.cancelBtn} onPress={() => setPostponeModal(null)}>
-            <Text style={styles.cancelBtnTxt}>Annulla</Text>
-          </Pressable>
-        </View>
-      </Modal>
+      <DateWheelModal
+        visible={postponeModal !== null}
+        value={postponeDate}
+        onConfirm={(date) => {
+          if (!postponeModal) return;
+          setPostponeDate(date);
+          if (postponeModal.kind === 'vaccine') setVaccineStatus(postponeModal.id, 'postponed', date);
+          else if (postponeModal.kind === 'anti') setAntiparasiticStatus(postponeModal.id, 'postponed', date);
+          else setCheckStatus(postponeModal.id, 'postponed', date);
+          setPostponeModal(null);
+        }}
+        onClose={() => setPostponeModal(null)}
+        accent="#F59E0B"
+        title="Riprogramma appuntamento"
+      />
 
       <SectionChatModal
         visible={chatOpen}
