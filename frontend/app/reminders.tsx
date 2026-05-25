@@ -5,7 +5,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -225,7 +224,10 @@ export default function PianoSaluteScreen() {
   const initH = useRef(8);
   const initM = useRef(0);
   const [showCheck, setShowCheck] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ title: string; ids: string[] } | null>(null);
+  const [savedToast, setSavedToast] = useState(false);
   const adherenceAnim = useRef(new Animated.Value(0)).current;
+  const toastAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     void loadReminders(getToken);
@@ -255,27 +257,41 @@ export default function PianoSaluteScreen() {
     const n = new Date();
     return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
   })();
+
+  // Filter medications active TODAY for the "Oggi" timeline and Hero
+  const todayMeds = medications.filter((r) => {
+    if (r.schedule.kind === 'once') return r.schedule.date === today;
+    if (r.schedule.kind === 'daily') {
+      const start = r.schedule.date;
+      return !start || start <= today;
+    }
+    return true;
+  });
+
   const upcoming =
-    medications
+    todayMeds
       .filter((r) => r.schedule.time)
       .sort((a, b) => (a.schedule.time! > b.schedule.time! ? 1 : -1))
-      .find((r) => r.schedule.time! >= nowTime) ?? medications[0];
+      .find((r) => r.schedule.time! >= nowTime) ?? todayMeds[0];
 
-  // Group medications by unique title for the "Farmaci attivi" card
+  // Group medications by unique title for the "Farmaci attivi" card (dedupe times)
   const uniqueTitles = [...new Set(medications.map((r) => r.title))];
-  const medGroups = uniqueTitles.map((title) => ({
-    title,
-    times: medications
-      .filter((r) => r.title === title && r.schedule.time)
-      .map((r) => r.schedule.time!)
-      .sort(),
-    reminders: medications.filter((r) => r.title === title),
-  }));
+  const medGroups = uniqueTitles.map((title) => {
+    const grpReminders = medications.filter((r) => r.title === title);
+    const uniqueTimes = [...new Set(grpReminders.map((r) => r.schedule.time).filter(Boolean) as string[])].sort();
+    const onceDates = grpReminders
+      .filter((r) => r.schedule.kind === 'once' && r.schedule.date)
+      .map((r) => r.schedule.date!) as string[];
+    const dateRange = onceDates.length > 0
+      ? { start: onceDates.reduce((a, b) => (a < b ? a : b)), end: onceDates.reduce((a, b) => (a > b ? a : b)) }
+      : null;
+    return { title, times: uniqueTimes, reminders: grpReminders, dateRange };
+  });
 
   const slotGroups = {
-    morning: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'morning'),
-    afternoon: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'afternoon'),
-    evening: medications.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'evening'),
+    morning: todayMeds.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'morning'),
+    afternoon: todayMeds.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'afternoon'),
+    evening: todayMeds.filter((r) => r.schedule.time && getSlot(r.schedule.time) === 'evening'),
   };
 
   const handleDose = (rid: string, action: DoseAction, time: string) => {
@@ -359,23 +375,32 @@ export default function PianoSaluteScreen() {
     } finally {
       setAddOpen(false);
       setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10), endDate: '' });
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showSavedToast();
     }
   };
 
   const handleDeleteMed = (title: string, ids: string[]) => {
-    Alert.alert('Elimina farmaco', `Vuoi eliminare "${title}" dal Piano Salute?`, [
-      { text: 'Annulla', style: 'cancel' },
-      {
-        text: 'Elimina',
-        style: 'destructive',
-        onPress: async () => {
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          for (const id of ids) {
-            await removeReminder(id, getToken);
-          }
-        },
-      },
-    ]);
+    setDeleteConfirm({ title, ids });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const ids = deleteConfirm.ids;
+    setDeleteConfirm(null);
+    for (const id of ids) {
+      await removeReminder(id, getToken);
+    }
+  };
+
+  const showSavedToast = () => {
+    setSavedToast(true);
+    Animated.sequence([
+      Animated.timing(toastAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.delay(1600),
+      Animated.timing(toastAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => setSavedToast(false));
   };
 
   const confirmPostpone = async (date: string) => {
@@ -503,6 +528,20 @@ export default function PianoSaluteScreen() {
                         {group.times.length > 1 ? `${group.times.length}x/giorno · ` : 'Ogni giorno · '}
                         {group.times.join(', ')}
                       </Text>
+                      {group.dateRange && (
+                        <Text style={[styles.medMeta, { marginTop: 2 }]}>
+                          {(() => {
+                            const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+                            const fmt = (iso: string) => {
+                              const [y, m, d] = iso.split('-');
+                              return `${d} ${months[Number(m)-1]}`;
+                            };
+                            return group.dateRange.start === group.dateRange.end
+                              ? `Solo ${fmt(group.dateRange.start)}`
+                              : `${fmt(group.dateRange.start)} → ${fmt(group.dateRange.end)}`;
+                          })()}
+                        </Text>
+                      )}
                     </View>
                     {todayRecForGroup && (
                       <View style={[styles.medBadge, {
@@ -755,6 +794,47 @@ export default function PianoSaluteScreen() {
       />
 
       <MemberPickerModal {...memberPickerProps} accent={colors.primary} />
+
+      {/* Delete confirmation modal */}
+      <Modal visible={!!deleteConfirm} transparent animationType="fade" onRequestClose={() => setDeleteConfirm(null)}>
+        <View style={styles.confirmBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDeleteConfirm(null)} />
+          <View style={styles.confirmCard}>
+            <View style={styles.confirmIcon}>
+              <Ionicons name="trash-outline" size={24} color="#EF4444" />
+            </View>
+            <Text style={styles.confirmTitle}>Elimina farmaco</Text>
+            <Text style={styles.confirmText}>
+              Vuoi eliminare <Text style={{ fontWeight: '700' }}>"{deleteConfirm?.title}"</Text> dal Piano Salute? Questa azione non può essere annullata.
+            </Text>
+            <View style={styles.confirmBtnRow}>
+              <Pressable style={[styles.confirmBtn, styles.confirmBtnGhost]} onPress={() => setDeleteConfirm(null)}>
+                <Text style={styles.confirmBtnGhostTxt}>Annulla</Text>
+              </Pressable>
+              <Pressable style={[styles.confirmBtn, styles.confirmBtnDanger]} onPress={confirmDelete}>
+                <Text style={styles.confirmBtnDangerTxt}>Elimina</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Saved toast */}
+      {savedToast && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.toast,
+            {
+              opacity: toastAnim,
+              transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }],
+            },
+          ]}
+        >
+          <Ionicons name="checkmark-circle" size={20} color="#fff" />
+          <Text style={styles.toastTxt}>Farmaco salvato</Text>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1050,6 +1130,57 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   statusPillTxt: { fontSize: 11, fontWeight: '700' },
+  confirmBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 28,
+  },
+  confirmCard: {
+    backgroundColor: '#fff',
+    borderRadius: radii.lg,
+    padding: 22,
+    width: '100%',
+    alignItems: 'center',
+  },
+  confirmIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  confirmTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, marginBottom: 6 },
+  confirmText: { fontSize: 13, color: colors.muted, textAlign: 'center', lineHeight: 19, marginBottom: 18 },
+  confirmBtnRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  confirmBtn: { flex: 1, paddingVertical: 12, borderRadius: radii.pill, alignItems: 'center' },
+  confirmBtnGhost: { backgroundColor: '#F3F4F6' },
+  confirmBtnGhostTxt: { color: colors.ink, fontWeight: '700', fontSize: 14 },
+  confirmBtnDanger: { backgroundColor: '#EF4444' },
+  confirmBtnDangerTxt: { color: '#fff', fontWeight: '800', fontSize: 14 },
+
+  toast: {
+    position: 'absolute',
+    bottom: 80,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#16A34A',
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: radii.pill,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  toastTxt: { color: '#fff', fontWeight: '700', fontSize: 14 },
+
   postponedUntilTxt: {
     fontSize: 11,
     color: colors.muted,
