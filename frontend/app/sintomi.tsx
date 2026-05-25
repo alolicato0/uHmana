@@ -28,6 +28,7 @@ import { chat, toDataUrl } from '../src/services/openrouter';
 import { computeHealthScore } from '../src/store/symptoms';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
+import { useMembersStore } from '../src/store/members';
 import { colors, radii } from '../src/theme';
 import type { ChatAttachment } from '../src/types';
 
@@ -132,6 +133,19 @@ function buildInsight(logs: SymptomLog[], wellness: DailyWellness | null): strin
   return "Tocca per analizzare i tuoi sintomi con l'AI.";
 }
 
+// ─── Member filtering ─────────────────────────────────────────────────────────
+
+function belongsTo(
+  entryMemberId: string | undefined,
+  activeId: string | null,
+  isDefaultFn: (id: string | null) => boolean,
+): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
+
 // ─── Schermata principale ────────────────────────────────────────────────────
 
 export default function SintomiScreen() {
@@ -145,9 +159,15 @@ export default function SintomiScreen() {
   const [expandedRecent, setExpandedRecent] = useState(false);
 
   // Selectors reattivi: si ri-renderizza quando logs o wellness cambiano
-  const logs = useSymptomsStore((s) => s.logs);
-  const wellness = useSymptomsStore((s) => s.wellness);
+  const allLogs = useSymptomsStore((s) => s.logs);
+  const allWellness = useSymptomsStore((s) => s.wellness);
   const removeLog = useSymptomsStore((s) => s.removeLog);
+
+  const activeHumanId = useMembersStore((s) => s.activeHumanId);
+  const isDefaultHuman = useMembersStore((s) => s.isDefault);
+
+  const logs = allLogs.filter((l) => belongsTo(l.memberId, activeHumanId, (id) => isDefaultHuman('human', id)));
+  const wellness = allWellness && belongsTo(allWellness.memberId, activeHumanId, (id) => isDefaultHuman('human', id)) ? allWellness : null;
 
   const score = computeHealthScore(logs, wellness);
   const trend = computeWeekTrend(logs);

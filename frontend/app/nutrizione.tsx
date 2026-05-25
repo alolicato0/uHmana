@@ -27,6 +27,7 @@ import {
   type WaterLevel,
   usePetNutritionStore,
 } from '../src/store/petNutrition';
+import { useMembersStore } from '../src/store/members';
 import { MemberPickerModal } from '../src/components/MemberPickerModal';
 import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { SectionChatModal } from '../src/components/SectionChatModal';
@@ -71,6 +72,19 @@ function relativeTime(time: string) {
 type ToxicLevel = 'danger' | 'warning' | 'ok';
 type ToxicResult = { level: ToxicLevel; msg: string };
 
+// ─── Member filtering ─────────────────────────────────────────────────────────
+
+function belongsTo(
+  entryMemberId: string | undefined,
+  activeId: string | null,
+  isDefaultFn: (id: string | null) => boolean,
+): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function NutrizioneScreen() {
   const profiles = useProfileStore((s) => s.profiles);
@@ -78,8 +92,14 @@ export default function NutrizioneScreen() {
   const petName = petProfile?.name ?? 'il tuo animale';
   const { getToken } = useAuth();
 
-  const { meals, weightLog, waterLevel, addMeal, removeMeal, addWeight, setWater } =
+  const { meals: allMeals, weightLog: allWeightLog, waterLevel, addMeal, removeMeal, addWeight, setWater } =
     usePetNutritionStore();
+
+  const activePetId = useMembersStore((s) => s.activePetId);
+  const isDefaultPet = useMembersStore((s) => s.isDefault);
+
+  const meals = allMeals.filter((m) => belongsTo(m.memberId, activePetId, (id) => isDefaultPet('pet', id)));
+  const weightLog = allWeightLog.filter((w) => belongsTo(w.memberId, activePetId, (id) => isDefaultPet('pet', id)));
 
   const { pickMember, modalProps: memberPickerProps } = useMemberPicker('pet');
 

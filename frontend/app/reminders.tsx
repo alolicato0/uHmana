@@ -23,9 +23,18 @@ import { useAuth } from '../src/context/AuthContext';
 import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { useDoseStore } from '../src/store/doses';
 import type { DoseAction } from '../src/store/doses';
+import { useMembersStore } from '../src/store/members';
 import { useRemindersStore } from '../src/store/reminders';
 import { colors, radii } from '../src/theme';
 import type { Reminder } from '../src/types';
+
+// ─── Member filtering ─────────────────────────────────────────────────────────
+function belongsTo(entryMemberId: string | undefined, activeId: string | null, isDefaultFn: (id: string | null) => boolean): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
 
 // ─── Drug interactions ────────────────────────────────────────────────────────
 const KNOWN_INTERACTIONS: { drugs: string[]; msg: string }[] = [
@@ -186,12 +195,18 @@ export default function PianoSaluteScreen() {
   const loadReminders = useRemindersStore((s) => s.load);
   const addReminder = useRemindersStore((s) => s.add);
   const removeReminder = useRemindersStore((s) => s.remove);
+  const updateReminder = useRemindersStore((s) => s.update);
+  const activeHumanId = useMembersStore((s) => s.activeHumanId);
+  const isDefaultHuman = useMembersStore((s) => (id: string | null) => s.isDefault('human', id));
   const { pickMember, modalProps: memberPickerProps } = useMemberPicker('human');
   const records = useDoseStore((s) => s.records);
   const logDose = useDoseStore((s) => s.logDose);
   const getWeekAdherence = useDoseStore((s) => s.getWeekAdherence);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [postponeOpen, setPostponeOpen] = useState(false);
+  const [postponeId, setPostponeId] = useState<string | null>(null);
+  const [postponeDate, setPostponeDate] = useState('');
   const [form, setForm] = useState<FormState>({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '' });
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickH, setPickH] = useState(8);
@@ -208,7 +223,8 @@ export default function PianoSaluteScreen() {
     void loadReminders(getToken);
   }, []);
 
-  const medications = reminders.filter((r) => r.category === 'medication' && r.enabled);
+  const filteredReminders = reminders.filter((r) => belongsTo(r.memberId, activeHumanId, isDefaultHuman));
+  const medications = filteredReminders.filter((r) => r.category === 'medication' && r.enabled);
   const today = todayKey();
   const todayRecs = records.filter((r) => r.date === today);
   const adherence = getWeekAdherence(medications.length);
@@ -336,6 +352,24 @@ export default function PianoSaluteScreen() {
     ]);
   };
 
+  const handleStatusChange = async (id: string, status: 'done' | 'not_done') => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await updateReminder(id, { status }, getToken);
+  };
+
+  const openPostpone = (id: string) => {
+    setPostponeId(id);
+    setPostponeDate('');
+    setPostponeOpen(true);
+  };
+
+  const confirmPostpone = async () => {
+    if (!postponeId) return;
+    await updateReminder(postponeId, { status: 'postponed', postponedUntil: postponeDate }, getToken);
+    setPostponeOpen(false);
+    setPostponeId(null);
+  };
+
   const upcomingRec = upcoming ? todayRecs.find((x) => x.reminderId === upcoming.id) : null;
 
   return (
@@ -443,34 +477,65 @@ export default function PianoSaluteScreen() {
             {medGroups.map((group, idx) => {
               const color = MED_COLORS[idx % MED_COLORS.length];
               const todayRecForGroup = todayRecs.find((x) => group.reminders.some((r) => r.id === x.reminderId));
+              // Use the first reminder in the group for status
+              const firstReminder = group.reminders[0];
+              const currentStatus = firstReminder?.status;
               return (
-                <View key={group.title} style={styles.medCard}>
-                  <View style={[styles.medDot, { backgroundColor: color }]} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.medName}>{group.title}</Text>
-                    <Text style={styles.medMeta}>
-                      {group.times.length > 1 ? `${group.times.length}x/giorno · ` : 'Ogni giorno · '}
-                      {group.times.join(', ')}
-                    </Text>
-                  </View>
-                  {todayRecForGroup && (
-                    <View style={[styles.medBadge, {
-                      backgroundColor: todayRecForGroup.action === 'taken' ? '#DCFCE7' : todayRecForGroup.action === 'skipped' ? '#FEE2E2' : '#FEF9C3',
-                    }]}>
-                      <Text style={[styles.medBadgeTxt, {
-                        color: todayRecForGroup.action === 'taken' ? '#16A34A' : todayRecForGroup.action === 'skipped' ? '#DC2626' : '#CA8A04',
-                      }]}>
-                        {todayRecForGroup.action === 'taken' ? 'Presa ✓' : todayRecForGroup.action === 'skipped' ? 'Saltata' : 'Rimandata'}
+                <View key={group.title} style={{ marginBottom: 6 }}>
+                  <View style={[styles.medCard, { marginBottom: 0 }]}>
+                    <View style={[styles.medDot, { backgroundColor: color }]} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.medName}>{group.title}</Text>
+                      <Text style={styles.medMeta}>
+                        {group.times.length > 1 ? `${group.times.length}x/giorno · ` : 'Ogni giorno · '}
+                        {group.times.join(', ')}
                       </Text>
                     </View>
+                    {todayRecForGroup && (
+                      <View style={[styles.medBadge, {
+                        backgroundColor: todayRecForGroup.action === 'taken' ? '#DCFCE7' : todayRecForGroup.action === 'skipped' ? '#FEE2E2' : '#FEF9C3',
+                      }]}>
+                        <Text style={[styles.medBadgeTxt, {
+                          color: todayRecForGroup.action === 'taken' ? '#16A34A' : todayRecForGroup.action === 'skipped' ? '#DC2626' : '#CA8A04',
+                        }]}>
+                          {todayRecForGroup.action === 'taken' ? 'Presa ✓' : todayRecForGroup.action === 'skipped' ? 'Saltata' : 'Rimandata'}
+                        </Text>
+                      </View>
+                    )}
+                    <Pressable
+                      onPress={() => handleDeleteMed(group.title, group.reminders.map((r) => r.id))}
+                      hitSlop={8}
+                      style={styles.medDelete}
+                    >
+                      <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    </Pressable>
+                  </View>
+                  {/* Status buttons */}
+                  {firstReminder && (
+                    <View style={styles.statusRow}>
+                      <Pressable
+                        style={[styles.statusPill, { backgroundColor: currentStatus === 'done' ? '#22C55E' : '#F0FDF4', borderColor: '#22C55E' }]}
+                        onPress={() => handleStatusChange(firstReminder.id, 'done')}
+                      >
+                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'done' ? '#fff' : '#22C55E' }]}>✅ Fatto</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.statusPill, { backgroundColor: currentStatus === 'not_done' ? '#EF4444' : '#FFF5F5', borderColor: '#EF4444' }]}
+                        onPress={() => handleStatusChange(firstReminder.id, 'not_done')}
+                      >
+                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'not_done' ? '#fff' : '#EF4444' }]}>❌ Non fatto</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.statusPill, { backgroundColor: currentStatus === 'postponed' ? '#F59E0B' : '#FFFBEB', borderColor: '#F59E0B' }]}
+                        onPress={() => openPostpone(firstReminder.id)}
+                      >
+                        <Text style={[styles.statusPillTxt, { color: currentStatus === 'postponed' ? '#fff' : '#F59E0B' }]}>⏰ Rimandato</Text>
+                      </Pressable>
+                    </View>
                   )}
-                  <Pressable
-                    onPress={() => handleDeleteMed(group.title, group.reminders.map((r) => r.id))}
-                    hitSlop={8}
-                    style={styles.medDelete}
-                  >
-                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  </Pressable>
+                  {firstReminder?.status === 'postponed' && firstReminder.postponedUntil ? (
+                    <Text style={styles.postponedUntilTxt}>Rimandato al: {firstReminder.postponedUntil}</Text>
+                  ) : null}
                 </View>
               );
             })}
@@ -634,6 +699,30 @@ export default function PianoSaluteScreen() {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Postpone date modal */}
+      <Modal visible={postponeOpen} transparent animationType="slide" onRequestClose={() => setPostponeOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setPostponeOpen(false)} />
+        <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.sheetTitle}>Rimanda a…</Text>
+          <Text style={styles.fieldLabel}>Data (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="YYYY-MM-DD"
+            value={postponeDate}
+            onChangeText={setPostponeDate}
+            keyboardType="numeric"
+          />
+          <Pressable
+            style={[styles.sheetBtn, { backgroundColor: '#F59E0B' }, !postponeDate.trim() && { opacity: 0.45 }]}
+            onPress={confirmPostpone}
+            disabled={!postponeDate.trim()}
+          >
+            <Text style={styles.sheetBtnTxt}>Conferma</Text>
+          </Pressable>
+        </View>
       </Modal>
 
       <MemberPickerModal {...memberPickerProps} accent={colors.primary} />
@@ -906,4 +995,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sheetBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
+
+  statusRow: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    borderBottomLeftRadius: radii.md,
+    borderBottomRightRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    marginTop: -1,
+  },
+  statusPill: {
+    flex: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  statusPillTxt: { fontSize: 11, fontWeight: '700' },
+  postponedUntilTxt: {
+    fontSize: 11,
+    color: colors.muted,
+    paddingHorizontal: 12,
+    paddingBottom: 4,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: colors.border,
+    borderBottomLeftRadius: radii.md,
+    borderBottomRightRadius: radii.md,
+    marginTop: -1,
+    paddingTop: 4,
+  },
 });

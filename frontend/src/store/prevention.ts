@@ -12,6 +12,8 @@ export interface Vaccine {
   vet?: string;
   notes?: string;
   memberId?: string;
+  status?: 'done' | 'not_done' | 'postponed';
+  postponedUntil?: string;
 }
 
 export interface Antiparasitic {
@@ -22,6 +24,8 @@ export interface Antiparasitic {
   nextDate: string;
   notes?: string;
   memberId?: string;
+  status?: 'done' | 'not_done' | 'postponed';
+  postponedUntil?: string;
 }
 
 export interface PreventiveCheck {
@@ -32,6 +36,8 @@ export interface PreventiveCheck {
   vet?: string;
   notes?: string;
   memberId?: string;
+  status?: 'done' | 'not_done' | 'postponed';
+  postponedUntil?: string;
 }
 
 interface PreventionState {
@@ -50,6 +56,9 @@ interface PreventionState {
   updateVaccineNotes: (id: string, notes: string) => void;
   updateAntiparasiticNotes: (id: string, notes: string) => void;
   updateCheckNotes: (id: string, notes: string) => void;
+  setVaccineStatus: (id: string, status: 'done' | 'not_done' | 'postponed', postponedUntil?: string) => void;
+  setAntiparasiticStatus: (id: string, status: 'done' | 'not_done' | 'postponed', postponedUntil?: string) => void;
+  setCheckStatus: (id: string, status: 'done' | 'not_done' | 'postponed', postponedUntil?: string) => void;
   syncNotifications: () => Promise<void>;
 }
 
@@ -130,6 +139,24 @@ export const usePreventionStore = create<PreventionState>()(
       updateCheckNotes: (id, notes) => {
         set((s) => ({
           checks: s.checks.map((c) => (c.id === id ? { ...c, notes } : c)),
+        }));
+      },
+
+      setVaccineStatus: (id, status, postponedUntil) => {
+        set((s) => ({
+          vaccines: s.vaccines.map((v) => v.id === id ? { ...v, status, postponedUntil } : v),
+        }));
+      },
+
+      setAntiparasiticStatus: (id, status, postponedUntil) => {
+        set((s) => ({
+          antiparasitics: s.antiparasitics.map((a) => a.id === id ? { ...a, status, postponedUntil } : a),
+        }));
+      },
+
+      setCheckStatus: (id, status, postponedUntil) => {
+        set((s) => ({
+          checks: s.checks.map((c) => c.id === id ? { ...c, status, postponedUntil } : c),
         }));
       },
 

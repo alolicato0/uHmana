@@ -15,6 +15,17 @@ import {
   type MemberKind,
   type PetMember,
 } from '../../src/store/members';
+
+function belongsTo(
+  entryMemberId: string | undefined,
+  activeId: string | null,
+  isDefaultFn: (id: string | null) => boolean,
+): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
 import { useNotifSeenStore } from '../../src/store/notifSeen';
 import { usePreventionStore } from '../../src/store/prevention';
 import { useProfileStore } from '../../src/store/profile';
@@ -36,13 +47,24 @@ export default function HomeScreen() {
   const antis = usePreventionStore((s) => s.antiparasitics);
   const checks = usePreventionStore((s) => s.checks);
 
+  const activeHumanId = useMembersStore((s) => s.activeHumanId);
+  const activePetId = useMembersStore((s) => s.activePetId);
+  const isDefaultHuman = useMembersStore((s) => (id: string | null) => s.isDefault('human', id));
+  const isDefaultPet = useMembersStore((s) => (id: string | null) => s.isDefault('pet', id));
+
   const upcoming: { id: string; title: string; time: string }[] =
     activeKind === 'pet'
       ? (() => {
           const out: { id: string; title: string; iso: string; type: string }[] = [];
-          vaccines.forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, title: v.name, iso: v.nextDate, type: 'Vaccino' }));
-          antis.forEach((a) => out.push({ id: `a_${a.id}`, title: a.name, iso: a.nextDate, type: 'Antiparassitario' }));
-          checks.forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, title: c.name, iso: c.nextDate, type: 'Controllo' }));
+          vaccines
+            .filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet))
+            .forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, title: v.name, iso: v.nextDate, type: 'Vaccino' }));
+          antis
+            .filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet))
+            .forEach((a) => out.push({ id: `a_${a.id}`, title: a.name, iso: a.nextDate, type: 'Antiparassitario' }));
+          checks
+            .filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet))
+            .forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, title: c.name, iso: c.nextDate, type: 'Controllo' }));
           return out
             .sort((x, y) => x.iso.localeCompare(y.iso))
             .slice(0, 3)
@@ -57,7 +79,7 @@ export default function HomeScreen() {
             });
         })()
       : reminders
-          .filter((r) => r.enabled)
+          .filter((r) => r.enabled && belongsTo(r.memberId, activeHumanId, isDefaultHuman))
           .slice(0, 3)
           .map((r) => ({ id: r.id, title: r.title, time: r.schedule.time ?? r.schedule.kind }));
 
@@ -65,11 +87,11 @@ export default function HomeScreen() {
   const notifIds: string[] =
     activeKind === 'pet'
       ? [
-          ...vaccines.filter((v) => !!v.nextDate).map((v) => `v_${v.id}`),
-          ...antis.map((a) => `a_${a.id}`),
-          ...checks.filter((c) => !!c.nextDate).map((c) => `c_${c.id}`),
+          ...vaccines.filter((v) => !!v.nextDate && belongsTo(v.memberId, activePetId, isDefaultPet)).map((v) => `v_${v.id}`),
+          ...antis.filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet)).map((a) => `a_${a.id}`),
+          ...checks.filter((c) => !!c.nextDate && belongsTo(c.memberId, activePetId, isDefaultPet)).map((c) => `c_${c.id}`),
         ]
-      : reminders.filter((r) => r.enabled).map((r) => r.id);
+      : reminders.filter((r) => r.enabled && belongsTo(r.memberId, activeHumanId, isDefaultHuman)).map((r) => r.id);
   const seenSet = useMemo(() => new Set(seenIds), [seenIds]);
   const notifCount = notifIds.filter((id) => !seenSet.has(id)).length;
 

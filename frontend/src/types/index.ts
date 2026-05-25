@@ -97,4 +97,6 @@ export interface Reminder {
   notes?: string;
   schedule: ReminderSchedule;
   enabled: boolean;
+  status?: 'done' | 'not_done' | 'postponed';
+  postponedUntil?: string;
 }

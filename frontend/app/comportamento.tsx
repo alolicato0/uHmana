@@ -32,6 +32,19 @@ import {
 } from '../src/store/petActivity';
 import { colors, radii } from '../src/theme';
 
+// ─── Member filtering ────────────────────────────────────────────────────────
+
+function belongsTo(
+  entryMemberId: string | undefined,
+  activeId: string | null,
+  isDefaultFn: (id: string | null) => boolean,
+): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
+
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const BG = '#FFF9F5';
 const PINK = '#EC4899';
@@ -517,15 +530,20 @@ export default function ComportamentoScreen() {
   const getTodayStatus = usePetActivityStore((s) => s.getTodayStatus);
   const getWeekActivity = usePetActivityStore((s) => s.getWeekActivity);
   const getRecentMoods = usePetActivityStore((s) => s.getRecentMoods);
-  const behaviorFlags = usePetActivityStore((s) => s.behaviorFlags);
+  const allBehaviorFlags = usePetActivityStore((s) => s.behaviorFlags);
   const aiInsight = usePetActivityStore((s) => s.aiInsight);
   const removeBehaviorFlag = usePetActivityStore((s) => s.removeBehaviorFlag);
   const setAiInsight = usePetActivityStore((s) => s.setAiInsight);
 
   const activePetId = useMembersStore((s) => s.activePetId);
+  const isDefaultPet = useMembersStore((s) => s.isDefault);
+
   const todayStatus = getTodayStatus(activePetId ?? undefined);
   const weekActivity = getWeekActivity(activePetId ?? undefined);
   const recentMoods = getRecentMoods(5, activePetId ?? undefined);
+  const behaviorFlags = allBehaviorFlags.filter((f) =>
+    belongsTo(f.memberId, activePetId, (id) => isDefaultPet('pet', id)),
+  );
 
   const [statusModal, setStatusModal] = useState(false);
   const [walkModal, setWalkModal] = useState(false);

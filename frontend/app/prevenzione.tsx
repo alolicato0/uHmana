@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +20,7 @@ import { MemberPickerModal } from '../src/components/MemberPickerModal';
 import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { SectionChatModal } from '../src/components/SectionChatModal';
 import { useMemberPicker } from '../src/hooks/useMemberPicker';
+import { useMembersStore } from '../src/store/members';
 import { useProfileStore } from '../src/store/profile';
 import {
   type Antiparasitic,
@@ -98,13 +99,23 @@ function statusColor(status: 'ok' | 'warning' | 'danger' | 'expired'): string {
   return RED;
 }
 
+function belongsTo(entryMemberId: string | undefined, activeId: string | null, isDefaultFn: (id: string | null) => boolean): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
+
 export default function PrevenzioneScreen() {
   const profiles = useProfileStore((s) => s.profiles);
   const petProfile = profiles.find((p) => p.kind === 'pet');
   const petName = petProfile?.name ?? 'il tuo animale';
 
-  const { vaccines, antiparasitics, checks, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck } =
+  const { vaccines, antiparasitics, checks, addVaccine, updateVaccine, removeVaccine, addAntiparasitic, updateAntiparasitic, removeAntiparasitic, addCheck, updateCheck, removeCheck, setVaccineStatus, setAntiparasiticStatus, setCheckStatus } =
     usePreventionStore();
+
+  const activePetId = useMembersStore((s) => s.activePetId);
+  const isDefaultPet = useMembersStore((s) => (id: string | null) => s.isDefault('pet', id));
 
   const { pickMember, modalProps: pickerProps } = useMemberPicker('pet');
 
@@ -161,6 +172,9 @@ export default function PrevenzioneScreen() {
   const [cVet, setCVet] = useState('');
   const [cNotes, setCNotes] = useState('');
 
+  const [postponeModal, setPostponeModal] = useState<{ kind: 'vaccine' | 'anti' | 'check'; id: string } | null>(null);
+  const [postponeDate, setPostponeDate] = useState('');
+
   const [pickerOpen, setPickerOpen] = useState<null | 'vDate' | 'vNext' | 'aApplied' | 'aNext' | 'cDate' | 'cNext'>(null);
   const pickerValue =
     pickerOpen === 'vDate' ? vDate :
@@ -186,14 +200,27 @@ export default function PrevenzioneScreen() {
     setPickerOpen(null);
   }
 
+  const filteredVaccines = useMemo(
+    () => vaccines.filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet)),
+    [vaccines, activePetId, isDefaultPet],
+  );
+  const filteredAntiparasitics = useMemo(
+    () => antiparasitics.filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet)),
+    [antiparasitics, activePetId, isDefaultPet],
+  );
+  const filteredChecks = useMemo(
+    () => checks.filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet)),
+    [checks, activePetId, isDefaultPet],
+  );
+
   const allUpcoming: { name: string; nextDate: string; type: string }[] = [];
-  vaccines.forEach((v) => {
+  filteredVaccines.forEach((v) => {
     if (v.nextDate) allUpcoming.push({ name: v.name, nextDate: v.nextDate, type: 'Vaccino' });
   });
-  antiparasitics.forEach((a) => {
+  filteredAntiparasitics.forEach((a) => {
     allUpcoming.push({ name: a.name, nextDate: a.nextDate, type: ANTIPARASITIC_TYPE_LABELS[a.type] });
   });
-  checks.forEach((c) => {
+  filteredChecks.forEach((c) => {
     if (c.nextDate) allUpcoming.push({ name: c.name, nextDate: c.nextDate, type: 'Controllo' });
   });
   allUpcoming.sort((a, b) => a.nextDate.localeCompare(b.nextDate));
@@ -226,15 +253,15 @@ export default function PrevenzioneScreen() {
   const nextDays = nextItem ? daysUntil(nextItem.nextDate) : null;
 
   const heroSummary = [
-    vaccines.length > 0 ? `${vaccines.length} vaccin${vaccines.length === 1 ? 'o' : 'i'}` : null,
-    antiparasitics.length > 0 ? `${antiparasitics.length} antiparassitar${antiparasitics.length === 1 ? 'io' : 'i'}` : null,
+    filteredVaccines.length > 0 ? `${filteredVaccines.length} vaccin${filteredVaccines.length === 1 ? 'o' : 'i'}` : null,
+    filteredAntiparasitics.length > 0 ? `${filteredAntiparasitics.length} antiparassitar${filteredAntiparasitics.length === 1 ? 'io' : 'i'}` : null,
     nextItem && nextDays !== null ? `prossimo richiamo tra ${nextDays} giorni` : null,
   ]
     .filter(Boolean)
     .join(' · ');
 
   const insightText = (() => {
-    if (vaccines.length === 0 && antiparasitics.length === 0 && checks.length === 0) {
+    if (filteredVaccines.length === 0 && filteredAntiparasitics.length === 0 && filteredChecks.length === 0) {
       return `Aggiungi i vaccini e i trattamenti di ${petName} per tenere traccia della sua protezione.`;
     }
     if (expiredItems.length > 0) {
@@ -246,29 +273,29 @@ export default function PrevenzioneScreen() {
     if (nextItem && nextDays !== null) {
       return `${petName} e' in regola con la prevenzione. Il prossimo appuntamento previsto e' tra ${nextDays} giorni (${nextItem.name}).`;
     }
-    return `${petName} ha ${vaccines.length} vaccin${vaccines.length === 1 ? 'o' : 'i'} registrat${vaccines.length === 1 ? 'o' : 'i'} e ${antiparasitics.length} trattament${antiparasitics.length === 1 ? 'o' : 'i'} antiparassitari. Continua ad aggiornare i dati per rimanere sempre protetto.`;
+    return `${petName} ha ${filteredVaccines.length} vaccin${filteredVaccines.length === 1 ? 'o' : 'i'} registrat${filteredVaccines.length === 1 ? 'o' : 'i'} e ${filteredAntiparasitics.length} trattament${filteredAntiparasitics.length === 1 ? 'o' : 'i'} antiparassitari. Continua ad aggiornare i dati per rimanere sempre protetto.`;
   })();
 
   function buildPreventionContext(): string {
     const parts: string[] = [`Animale: ${petName}.`];
     if (petProfile?.species) parts.push(`Specie: ${petProfile.species}.`);
-    if (vaccines.length > 0) {
+    if (filteredVaccines.length > 0) {
       parts.push(
-        `Vaccini: ${vaccines.map((v) => `${v.name} (applicato ${v.date}${v.nextDate ? `, prossima dose ${v.nextDate}` : ''})`).join('; ')}.`,
+        `Vaccini: ${filteredVaccines.map((v) => `${v.name} (applicato ${v.date}${v.nextDate ? `, prossima dose ${v.nextDate}` : ''})`).join('; ')}.`,
       );
     } else {
       parts.push('Nessun vaccino registrato.');
     }
-    if (antiparasitics.length > 0) {
+    if (filteredAntiparasitics.length > 0) {
       parts.push(
-        `Antiparassitari: ${antiparasitics.map((a) => `${a.name} tipo ${ANTIPARASITIC_TYPE_LABELS[a.type]} (applicato ${a.dateApplied}, prossima dose ${a.nextDate})`).join('; ')}.`,
+        `Antiparassitari: ${filteredAntiparasitics.map((a) => `${a.name} tipo ${ANTIPARASITIC_TYPE_LABELS[a.type]} (applicato ${a.dateApplied}, prossima dose ${a.nextDate})`).join('; ')}.`,
       );
     } else {
       parts.push('Nessun antiparassitario registrato.');
     }
-    if (checks.length > 0) {
+    if (filteredChecks.length > 0) {
       parts.push(
-        `Controlli preventivi: ${checks.map((c) => `${c.name} (${c.date}${c.nextDate ? `, prossimo ${c.nextDate}` : ''})`).join('; ')}.`,
+        `Controlli preventivi: ${filteredChecks.map((c) => `${c.name} (${c.date}${c.nextDate ? `, prossimo ${c.nextDate}` : ''})`).join('; ')}.`,
       );
     } else {
       parts.push('Nessun controllo preventivo registrato.');
@@ -475,17 +502,17 @@ export default function PrevenzioneScreen() {
         <View style={styles.grid}>
           <Pressable style={styles.gridCell} onPress={() => openAndScroll('vaccines', vaccinesRef)}>
             <Text style={styles.gridEmoji}>💉</Text>
-            <Text style={styles.gridCount}>{vaccines.length}</Text>
+            <Text style={styles.gridCount}>{filteredVaccines.length}</Text>
             <Text style={styles.gridLabel}>Vaccini</Text>
           </Pressable>
           <Pressable style={styles.gridCell} onPress={() => openAndScroll('anti', antiparasiticsRef)}>
             <Text style={styles.gridEmoji}>🦟</Text>
-            <Text style={styles.gridCount}>{antiparasitics.length}</Text>
+            <Text style={styles.gridCount}>{filteredAntiparasitics.length}</Text>
             <Text style={styles.gridLabel}>Antipar.</Text>
           </Pressable>
           <Pressable style={styles.gridCell} onPress={() => openAndScroll('checks', checksRef)}>
             <Text style={styles.gridEmoji}>🩺</Text>
-            <Text style={styles.gridCount}>{checks.length}</Text>
+            <Text style={styles.gridCount}>{filteredChecks.length}</Text>
             <Text style={styles.gridLabel}>Controlli</Text>
           </Pressable>
           <Pressable style={styles.gridCell} onPress={() => openAndScroll('upcoming', upcomingRef)}>
@@ -533,7 +560,7 @@ export default function PrevenzioneScreen() {
           <Pressable style={styles.accordionHeader} onPress={() => toggleSection('vaccines')}>
             <Text style={styles.sectionTitle}>Vaccini</Text>
             <View style={styles.accordionRight}>
-              <Text style={styles.accordionCount}>{vaccines.length}</Text>
+              <Text style={styles.accordionCount}>{filteredVaccines.length}</Text>
               <Pressable
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -547,13 +574,13 @@ export default function PrevenzioneScreen() {
             </View>
           </Pressable>
           {sectionsOpen.vaccines && <View style={{ height: 10 }} />}
-          {sectionsOpen.vaccines && (vaccines.length === 0 ? (
+          {sectionsOpen.vaccines && (filteredVaccines.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowVaccineModal(true)}>
               <Text style={styles.emptyText}>Nessun vaccino registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
             </Pressable>
           ) : (
-            vaccines.map((v) => {
+            filteredVaccines.map((v) => {
               const expanded = expandedVaccine === v.id;
               const nextDays = v.nextDate ? daysUntil(v.nextDate) : null;
               const status = nextDays !== null ? statusFromDays(nextDays) : 'ok';
@@ -585,6 +612,29 @@ export default function PrevenzioneScreen() {
                     )}
                     <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={MUTED} />
                   </View>
+                  <View style={styles.statusBtnRow}>
+                    <Pressable
+                      style={[styles.statusBtn, v.status === 'done' && { backgroundColor: GREEN }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setVaccineStatus(v.id, 'done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, v.status === 'done' && { color: '#fff' }]}>✅ Fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, v.status === 'not_done' && { backgroundColor: RED }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setVaccineStatus(v.id, 'not_done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, v.status === 'not_done' && { color: '#fff' }]}>❌ Non fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, v.status === 'postponed' && { backgroundColor: ORANGE }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPostponeModal({ kind: 'vaccine', id: v.id }); setPostponeDate(''); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, v.status === 'postponed' && { color: '#fff' }]}>⏰ Rimandato</Text>
+                    </Pressable>
+                  </View>
+                  {v.status === 'postponed' && v.postponedUntil && (
+                    <Text style={styles.postponedLabel}>Rinviato al: {v.postponedUntil}</Text>
+                  )}
                   {expanded && (
                     <View style={styles.cardDetails}>
                       {v.nextDate && (
@@ -639,7 +689,7 @@ export default function PrevenzioneScreen() {
           <Pressable style={styles.accordionHeader} onPress={() => toggleSection('anti')}>
             <Text style={styles.sectionTitle}>Protezione antiparassitaria</Text>
             <View style={styles.accordionRight}>
-              <Text style={styles.accordionCount}>{antiparasitics.length}</Text>
+              <Text style={styles.accordionCount}>{filteredAntiparasitics.length}</Text>
               <Pressable
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -653,13 +703,13 @@ export default function PrevenzioneScreen() {
             </View>
           </Pressable>
           {sectionsOpen.anti && <View style={{ height: 10 }} />}
-          {sectionsOpen.anti && (antiparasitics.length === 0 ? (
+          {sectionsOpen.anti && (filteredAntiparasitics.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowAntiModal(true)}>
               <Text style={styles.emptyText}>Nessun trattamento registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
             </Pressable>
           ) : (
-            antiparasitics.map((a) => {
+            filteredAntiparasitics.map((a) => {
               const days = daysUntil(a.nextDate);
               const status = statusFromDays(days);
               const col = statusColor(status);
@@ -700,6 +750,29 @@ export default function PrevenzioneScreen() {
                     </Text>
                   </View>
                   <Text style={styles.appliedDate}>Applicato il {formatDate(a.dateApplied)}</Text>
+                  <View style={styles.statusBtnRow}>
+                    <Pressable
+                      style={[styles.statusBtn, a.status === 'done' && { backgroundColor: GREEN }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAntiparasiticStatus(a.id, 'done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, a.status === 'done' && { color: '#fff' }]}>✅ Fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, a.status === 'not_done' && { backgroundColor: RED }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAntiparasiticStatus(a.id, 'not_done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, a.status === 'not_done' && { color: '#fff' }]}>❌ Non fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, a.status === 'postponed' && { backgroundColor: ORANGE }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPostponeModal({ kind: 'anti', id: a.id }); setPostponeDate(''); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, a.status === 'postponed' && { color: '#fff' }]}>⏰ Rimandato</Text>
+                    </Pressable>
+                  </View>
+                  {a.status === 'postponed' && a.postponedUntil && (
+                    <Text style={styles.postponedLabel}>Rinviato al: {a.postponedUntil}</Text>
+                  )}
                 </Pressable>
               );
             })
@@ -710,7 +783,7 @@ export default function PrevenzioneScreen() {
           <Pressable style={styles.accordionHeader} onPress={() => toggleSection('checks')}>
             <Text style={styles.sectionTitle}>Controlli preventivi</Text>
             <View style={styles.accordionRight}>
-              <Text style={styles.accordionCount}>{checks.length}</Text>
+              <Text style={styles.accordionCount}>{filteredChecks.length}</Text>
               <Pressable
                 onPress={() => {
                   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -724,13 +797,13 @@ export default function PrevenzioneScreen() {
             </View>
           </Pressable>
           {sectionsOpen.checks && <View style={{ height: 10 }} />}
-          {sectionsOpen.checks && (checks.length === 0 ? (
+          {sectionsOpen.checks && (filteredChecks.length === 0 ? (
             <Pressable style={styles.emptyCard} onPress={() => setShowCheckModal(true)}>
               <Text style={styles.emptyText}>Nessun controllo registrato</Text>
               <Text style={styles.emptyAction}>Tocca + per aggiungere</Text>
             </Pressable>
           ) : (
-            checks.map((c) => {
+            filteredChecks.map((c) => {
               const expanded = expandedCheck === c.id;
               const nextDays = c.nextDate ? daysUntil(c.nextDate) : null;
               const status = nextDays !== null ? statusFromDays(nextDays) : 'ok';
@@ -762,6 +835,29 @@ export default function PrevenzioneScreen() {
                     )}
                     <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={MUTED} />
                   </View>
+                  <View style={styles.statusBtnRow}>
+                    <Pressable
+                      style={[styles.statusBtn, c.status === 'done' && { backgroundColor: GREEN }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCheckStatus(c.id, 'done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, c.status === 'done' && { color: '#fff' }]}>✅ Fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, c.status === 'not_done' && { backgroundColor: RED }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCheckStatus(c.id, 'not_done'); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, c.status === 'not_done' && { color: '#fff' }]}>❌ Non fatto</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.statusBtn, c.status === 'postponed' && { backgroundColor: ORANGE }]}
+                      onPress={() => { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPostponeModal({ kind: 'check', id: c.id }); setPostponeDate(''); }}
+                    >
+                      <Text style={[styles.statusBtnTxt, c.status === 'postponed' && { color: '#fff' }]}>⏰ Rimandato</Text>
+                    </Pressable>
+                  </View>
+                  {c.status === 'postponed' && c.postponedUntil && (
+                    <Text style={styles.postponedLabel}>Rinviato al: {c.postponedUntil}</Text>
+                  )}
                   {expanded && (
                     <View style={styles.cardDetails}>
                       {c.nextDate && (
@@ -1052,6 +1148,41 @@ export default function PrevenzioneScreen() {
             <Text style={styles.saveBtnTxt}>Elimina</Text>
           </Pressable>
           <Pressable style={styles.cancelBtn} onPress={() => setConfirmDel(null)}>
+            <Text style={styles.cancelBtnTxt}>Annulla</Text>
+          </Pressable>
+        </View>
+      </Modal>
+
+      <Modal visible={postponeModal !== null} transparent animationType="slide" onRequestClose={() => setPostponeModal(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setPostponeModal(null)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.modalTitle}>Rimanda appuntamento</Text>
+          <Text style={styles.modalSub}>Inserisci la nuova data (YYYY-MM-DD)</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={postponeDate}
+            onChangeText={setPostponeDate}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={MUTED}
+            keyboardType="numbers-and-punctuation"
+            autoFocus
+          />
+          <View style={{ height: 16 }} />
+          <Pressable
+            style={[styles.saveBtn, { backgroundColor: ORANGE }]}
+            onPress={() => {
+              if (!postponeModal) return;
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              if (postponeModal.kind === 'vaccine') setVaccineStatus(postponeModal.id, 'postponed', postponeDate || undefined);
+              else if (postponeModal.kind === 'anti') setAntiparasiticStatus(postponeModal.id, 'postponed', postponeDate || undefined);
+              else setCheckStatus(postponeModal.id, 'postponed', postponeDate || undefined);
+              setPostponeModal(null);
+            }}
+          >
+            <Text style={styles.saveBtnTxt}>Conferma rinvio</Text>
+          </Pressable>
+          <Pressable style={styles.cancelBtn} onPress={() => setPostponeModal(null)}>
             <Text style={styles.cancelBtnTxt}>Annulla</Text>
           </Pressable>
         </View>
