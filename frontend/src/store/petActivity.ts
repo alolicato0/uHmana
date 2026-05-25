@@ -55,7 +55,11 @@ interface PetActivityState {
 
   setTodayStatus: (status: Omit<DailyStatus, 'date'>, memberId?: string) => void;
   addActivity: (entry: Omit<ActivityEntry, 'id'>) => void;
+  removeActivity: (id: string) => void;
+  updateActivityNote: (id: string, note: string) => void;
   addMood: (entry: Omit<MoodEntry, 'id'>) => void;
+  removeMood: (id: string) => void;
+  updateMoodNote: (id: string, note: string) => void;
   addBehaviorFlag: (label: string, note?: string, memberId?: string) => void;
   removeBehaviorFlag: (id: string) => void;
   setAiInsight: (text: string) => void;
@@ -113,12 +117,28 @@ export const usePetActivityStore = create<PetActivityState>()(
           ],
         })),
 
+      removeActivity: (id) =>
+        set((s) => ({ activityLog: s.activityLog.filter((a) => a.id !== id) })),
+
+      updateActivityNote: (id, note) =>
+        set((s) => ({
+          activityLog: s.activityLog.map((a) => (a.id === id ? { ...a, note } : a)),
+        })),
+
       addMood: (entry) =>
         set((s) => ({
           moodLog: [
             { ...entry, id: `mood-${Date.now()}-${Math.random().toString(36).slice(2)}` },
             ...s.moodLog,
           ],
+        })),
+
+      removeMood: (id) =>
+        set((s) => ({ moodLog: s.moodLog.filter((m) => m.id !== id) })),
+
+      updateMoodNote: (id, note) =>
+        set((s) => ({
+          moodLog: s.moodLog.map((m) => (m.id === id ? { ...m, note } : m)),
         })),
 
       addBehaviorFlag: (label, note, memberId) =>

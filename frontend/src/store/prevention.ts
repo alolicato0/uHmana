@@ -47,6 +47,9 @@ interface PreventionState {
   addCheck: (c: Omit<PreventiveCheck, 'id'>) => void;
   updateCheck: (id: string, c: Omit<PreventiveCheck, 'id'>) => void;
   removeCheck: (id: string) => void;
+  updateVaccineNotes: (id: string, notes: string) => void;
+  updateAntiparasiticNotes: (id: string, notes: string) => void;
+  updateCheckNotes: (id: string, notes: string) => void;
   syncNotifications: () => Promise<void>;
 }
 
@@ -110,6 +113,24 @@ export const usePreventionStore = create<PreventionState>()(
       removeCheck: (id) => {
         set((s) => ({ checks: s.checks.filter((c) => c.id !== id) }));
         void syncFrom(get());
+      },
+
+      updateVaccineNotes: (id, notes) => {
+        set((s) => ({
+          vaccines: s.vaccines.map((v) => (v.id === id ? { ...v, notes } : v)),
+        }));
+      },
+
+      updateAntiparasiticNotes: (id, notes) => {
+        set((s) => ({
+          antiparasitics: s.antiparasitics.map((a) => (a.id === id ? { ...a, notes } : a)),
+        }));
+      },
+
+      updateCheckNotes: (id, notes) => {
+        set((s) => ({
+          checks: s.checks.map((c) => (c.id === id ? { ...c, notes } : c)),
+        }));
       },
 
       syncNotifications: async () => {

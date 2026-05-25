@@ -11,6 +11,7 @@ interface TimelineState {
   load: (getToken: GetToken) => Promise<void>;
   add: (e: Omit<TimelineEvent, 'id'>, getToken: GetToken) => Promise<void>;
   remove: (id: string, getToken: GetToken) => Promise<void>;
+  update: (id: string, patch: Partial<Pick<TimelineEvent, 'title' | 'description'>>) => void;
   contextSummary: (max?: number) => string;
 }
 
@@ -41,6 +42,12 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     const token = await getToken();
     await deleteEvent(id, token);
     set((s) => ({ events: s.events.filter((e) => e.id !== id) }));
+  },
+
+  update: (id, patch) => {
+    set((s) => ({
+      events: s.events.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+    }));
   },
 
   contextSummary: (max = 10) => {

@@ -32,6 +32,7 @@ export interface TimelineEvent {
   description?: string;
   date: string; // ISO
   mediaUrls?: string[];
+  memberId?: string;
 }
 
 export type ChatRole = 'user' | 'assistant' | 'system';

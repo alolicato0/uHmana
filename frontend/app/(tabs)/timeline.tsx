@@ -5,7 +5,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   LayoutAnimation,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -16,6 +18,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../../src/context/AuthContext';
+import { MemberSwitcher } from '../../src/components/MemberSwitcher';
 import { buildInsightReport } from '../../src/services/insightEngine';
 import { useRemindersStore } from '../../src/store/reminders';
 import { useSymptomsStore } from '../../src/store/symptoms';
@@ -52,6 +56,9 @@ const TYPE_COLOR: Record<TimelineEventType, string> = {
   photo: '#8B5CF6',
 };
 
+const HUMAN_ACCENT = '#0DB09E';
+const PET_ACCENT = '#10B981';
+
 const HUMAN_CHIPS: { key: TimelineEventType | null; label: string }[] = [
   { key: null, label: 'Tutti' },
   { key: 'symptom', label: 'Sintomi 🌡️' },
@@ -76,6 +83,8 @@ interface PetTimelineEvent {
   date: string; // ISO or YYYY-MM-DD
   color: string;
   detail?: string;
+  onDelete?: () => void;
+  onEdit?: (newNote: string) => void;
 }
 
 const PET_CHIPS: { key: PetCategory | null; label: string }[] = [
@@ -86,8 +95,6 @@ const PET_CHIPS: { key: PetCategory | null; label: string }[] = [
   { key: 'vet', label: 'Vet 🩺' },
   { key: 'prevenzione', label: 'Prevenzione 💉' },
 ];
-
-const PET_ACCENT = '#10B981';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,14 +129,20 @@ function HeroStat({ n, label }: { n: number; label: string }) {
   );
 }
 
-function EventCard({
+function HumanEventRow({
   event,
   expanded,
   onToggle,
+  onEdit,
+  onDelete,
+  isLast,
 }: {
   event: TimelineEvent;
   expanded: boolean;
   onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  isLast: boolean;
 }) {
   const d = new Date(event.date);
   const time = d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
@@ -138,50 +151,69 @@ function EventCard({
   const hasMore = !!event.description || (event.mediaUrls?.length ?? 0) > 0;
 
   return (
-    <Pressable style={[styles.eventCard, { borderLeftColor: color }]} onPress={onToggle}>
-      <View style={styles.eventRow}>
-        <View style={[styles.eventIcon, { backgroundColor: color + '1A' }]}>
-          <Text style={{ fontSize: 18 }}>{eventTypeEmoji[event.type]}</Text>
+    <View style={[styles.innerEventRow, !isLast && styles.innerEventRowSep]}>
+      <View style={[styles.leftBar, { backgroundColor: color }]} />
+      <Pressable style={styles.innerEventInner} onPress={onToggle}>
+        <View style={styles.eventRow}>
+          <View style={[styles.eventIcon, { backgroundColor: color + '1A' }]}>
+            <Text style={{ fontSize: 18 }}>{eventTypeEmoji[event.type]}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eventTitle}>{event.title}</Text>
+            <Text style={[styles.eventType, { color }]}>{eventTypeLabels[event.type]}</Text>
+          </View>
+          <View style={styles.actionsCol}>
+            <View style={styles.actionsRow}>
+              <Pressable onPress={onEdit} hitSlop={8} style={styles.actionBtn}>
+                <Ionicons name="create-outline" size={18} color={colors.muted} />
+              </Pressable>
+              <Pressable onPress={onDelete} hitSlop={8} style={styles.actionBtn}>
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </Pressable>
+            </View>
+            <View style={styles.timeRow}>
+              <Text style={styles.eventTime}>{time}</Text>
+              {hasMore && (
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.muted} />
+              )}
+            </View>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eventTitle}>{event.title}</Text>
-          <Text style={[styles.eventType, { color }]}>{eventTypeLabels[event.type]}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: 4 }}>
-          <Text style={styles.eventTime}>{time}</Text>
-          {hasMore && (
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.muted} />
-          )}
-        </View>
-      </View>
 
-      {expanded && (
-        <View style={styles.eventDetail}>
-          <Text style={styles.eventDetailDate}>{fullDate} · {time}</Text>
-          {event.description ? <Text style={styles.eventDesc}>{event.description}</Text> : null}
-          {(event.mediaUrls?.length ?? 0) > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {event.mediaUrls!.map((uri, i) => (
-                  <Image key={i} source={{ uri }} style={styles.eventMedia} contentFit="cover" />
-                ))}
-              </View>
-            </ScrollView>
-          )}
-        </View>
-      )}
-    </Pressable>
+        {expanded && (
+          <View style={styles.eventDetail}>
+            <Text style={styles.eventDetailDate}>{fullDate} · {time}</Text>
+            {event.description ? <Text style={styles.eventDesc}>{event.description}</Text> : null}
+            {(event.mediaUrls?.length ?? 0) > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {event.mediaUrls!.map((uri, i) => (
+                    <Image key={i} source={{ uri }} style={styles.eventMedia} contentFit="cover" />
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+          </View>
+        )}
+      </Pressable>
+    </View>
   );
 }
 
-function PetEventCard({
+function PetEventRow({
   event,
   expanded,
   onToggle,
+  onEdit,
+  onDelete,
+  isLast,
 }: {
   event: PetTimelineEvent;
   expanded: boolean;
   onToggle: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  isLast: boolean;
 }) {
   const withTime = isIsoWithTime(event.date);
   const d = new Date(event.date);
@@ -195,42 +227,94 @@ function PetEventCard({
     : d.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <Pressable style={[styles.petEventCard, { borderLeftColor: event.color }]} onPress={onToggle}>
-      <View style={styles.eventRow}>
-        <View style={[styles.petEventIcon, { backgroundColor: event.color + '20' }]}>
-          <Text style={{ fontSize: 20 }}>{event.emoji}</Text>
+    <View style={[styles.innerEventRow, !isLast && styles.innerEventRowSep]}>
+      <View style={[styles.leftBar, { backgroundColor: event.color }]} />
+      <Pressable style={styles.innerEventInner} onPress={onToggle}>
+        <View style={styles.eventRow}>
+          <View style={[styles.petEventIcon, { backgroundColor: event.color + '20' }]}>
+            <Text style={{ fontSize: 20 }}>{event.emoji}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eventTitle}>{event.title}</Text>
+            {event.subtitle ? <Text style={[styles.eventType, { color: event.color }]}>{event.subtitle}</Text> : null}
+          </View>
+          <View style={styles.actionsCol}>
+            <View style={styles.actionsRow}>
+              {onEdit && (
+                <Pressable onPress={onEdit} hitSlop={8} style={styles.actionBtn}>
+                  <Ionicons name="create-outline" size={18} color={colors.muted} />
+                </Pressable>
+              )}
+              {onDelete && (
+                <Pressable onPress={onDelete} hitSlop={8} style={styles.actionBtn}>
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </Pressable>
+              )}
+            </View>
+            <View style={styles.timeRow}>
+              <Text style={styles.eventTime}>{timeStr}</Text>
+              {(event.detail || event.subtitle) && (
+                <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.muted} />
+              )}
+            </View>
+          </View>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eventTitle}>{event.title}</Text>
-          {event.subtitle ? <Text style={[styles.eventType, { color: event.color }]}>{event.subtitle}</Text> : null}
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: 4 }}>
-          <Text style={styles.eventTime}>{timeStr}</Text>
-          {(event.detail || event.subtitle) && (
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={15} color={colors.muted} />
-          )}
-        </View>
-      </View>
 
-      {expanded && (
-        <View style={styles.eventDetail}>
-          <Text style={styles.eventDetailDate}>{fullDateStr}</Text>
-          {event.detail ? <Text style={styles.eventDesc}>{event.detail}</Text> : null}
+        {expanded && (
+          <View style={styles.eventDetail}>
+            <Text style={styles.eventDetailDate}>{fullDateStr}</Text>
+            {event.detail ? <Text style={styles.eventDesc}>{event.detail}</Text> : null}
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function DateCard({
+  label,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.dateCard}>
+      <Pressable style={styles.dateCardHeader} onPress={onToggle}>
+        <Ionicons
+          name={expanded ? 'chevron-down' : 'chevron-forward'}
+          size={18}
+          color={colors.muted}
+        />
+        <Text style={styles.dateCardLabel}>{label}</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeTxt}>{count}</Text>
         </View>
-      )}
-    </Pressable>
+        <View style={{ flex: 1 }} />
+      </Pressable>
+      {expanded && <View style={styles.dateCardBody}>{children}</View>}
+    </View>
   );
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
 
 export default function TimelineScreen() {
+  const { getToken } = useAuth();
   const activeKind = useProfileStore((s) => s.activeKind);
   const getActiveProfile = useProfileStore((s) => s.getActiveProfile);
   const petName = getActiveProfile()?.name ?? 'il tuo animale';
 
   // Human stores
   const events = useTimelineStore((s) => s.events);
+  const removeTimeline = useTimelineStore((s) => s.remove);
+  const updateTimeline = useTimelineStore((s) => s.update);
   const logs = useSymptomsStore((s) => s.logs);
   const wellness = useSymptomsStore((s) => s.wellness);
   const getWeekTrend = useSymptomsStore((s) => s.getWeekTrend);
@@ -240,19 +324,57 @@ export default function TimelineScreen() {
   const activityLog = usePetActivityStore((s) => s.activityLog);
   const moodLog = usePetActivityStore((s) => s.moodLog);
   const dailyStatuses = usePetActivityStore((s) => s.dailyStatuses);
+  const removeActivity = usePetActivityStore((s) => s.removeActivity);
+  const updateActivityNote = usePetActivityStore((s) => s.updateActivityNote);
+  const removeMood = usePetActivityStore((s) => s.removeMood);
+  const updateMoodNote = usePetActivityStore((s) => s.updateMoodNote);
+
   const meals = usePetNutritionStore((s) => s.meals);
   const weightLog = usePetNutritionStore((s) => s.weightLog);
+  const removeMeal = usePetNutritionStore((s) => s.removeMeal);
+  const updateMealNote = usePetNutritionStore((s) => s.updateMealNote);
+  const removeWeight = usePetNutritionStore((s) => s.removeWeight);
+  const updateWeightNote = usePetNutritionStore((s) => s.updateWeightNote);
+
   const symptomHistory = useVetStore((s) => s.symptomHistory);
   const insightText = useVetStore((s) => s.insightText);
+  const removeSymptomEntry = useVetStore((s) => s.removeSymptomEntry);
+  const updateSymptomDescription = useVetStore((s) => s.updateSymptomDescription);
+
   const vaccines = usePreventionStore((s) => s.vaccines);
   const antiparasitics = usePreventionStore((s) => s.antiparasitics);
   const checks = usePreventionStore((s) => s.checks);
+  const removeVaccine = usePreventionStore((s) => s.removeVaccine);
+  const removeAntiparasitic = usePreventionStore((s) => s.removeAntiparasitic);
+  const removeCheck = usePreventionStore((s) => s.removeCheck);
+  const updateVaccineNotes = usePreventionStore((s) => s.updateVaccineNotes);
+  const updateAntiparasiticNotes = usePreventionStore((s) => s.updateAntiparasiticNotes);
+  const updateCheckNotes = usePreventionStore((s) => s.updateCheckNotes);
+
   const activePetId = useMembersStore((s) => s.activePetId);
+  const activeHumanId = useMembersStore((s) => s.activeHumanId);
 
   const [humanFilter, setHumanFilter] = useState<TimelineEventType | null>(null);
   const [petFilter, setPetFilter] = useState<PetCategory | null>(null);
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [initializedDatesKey, setInitializedDatesKey] = useState<string | null>(null);
+
+  // Confirmation / edit modals
+  const [confirmDel, setConfirmDel] = useState<
+    | { kind: 'human'; id: string; name: string }
+    | { kind: 'pet'; id: string; name: string; onDelete: () => void }
+    | null
+  >(null);
+
+  const [editTarget, setEditTarget] = useState<
+    | { kind: 'human'; id: string; title: string; description: string }
+    | { kind: 'pet'; id: string; note: string; onEdit: (n: string) => void }
+    | null
+  >(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   const now = Date.now();
 
@@ -262,15 +384,27 @@ export default function TimelineScreen() {
     setExpandedId((cur) => (cur === id ? null : id));
   };
 
+  const toggleDateExpand = (label: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    void Haptics.selectionAsync();
+    setExpandedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  };
+
   // ── Human mode data ──
   const humanFiltered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return events.filter((e) => {
       if (humanFilter && e.type !== humanFilter) return false;
+      if (activeHumanId && e.memberId && e.memberId !== activeHumanId) return false;
       if (q && !(e.title.toLowerCase().includes(q) || (e.description ?? '').toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [events, humanFilter, search]);
+  }, [events, humanFilter, search, activeHumanId]);
 
   const humanGrouped = useMemo(() => {
     const map: { label: string; items: TimelineEvent[] }[] = [];
@@ -324,6 +458,8 @@ export default function TimelineScreen() {
         date: a.date,
         color: '#10B981',
         detail: a.note,
+        onDelete: () => removeActivity(a.id),
+        onEdit: (note: string) => updateActivityNote(a.id, note),
       });
     }
 
@@ -339,6 +475,8 @@ export default function TimelineScreen() {
         date: m.date,
         color: '#EC4899',
         detail: m.note,
+        onDelete: () => removeMood(m.id),
+        onEdit: (note: string) => updateMoodNote(m.id, note),
       });
     }
 
@@ -353,6 +491,8 @@ export default function TimelineScreen() {
         emoji: '🍖',
         date: meal.date,
         color: '#F59E0B',
+        onDelete: () => removeMeal(meal.id),
+        onEdit: (note: string) => updateMealNote(meal.id, note),
       });
     }
 
@@ -366,12 +506,13 @@ export default function TimelineScreen() {
         emoji: '⚖️',
         date: w.date,
         color: '#F97316',
+        onDelete: () => removeWeight(w.id),
+        onEdit: (note: string) => updateWeightNote(w.id, note),
       });
     }
 
     // Symptoms
     for (const s of symptomHistory) {
-      // symptomHistory entries don't have memberId per the store interface, skip memberId filter
       list.push({
         id: `sym-${s.id}`,
         category: 'sintomo',
@@ -381,10 +522,12 @@ export default function TimelineScreen() {
         date: s.createdAt,
         color: '#EF4444',
         detail: s.description,
+        onDelete: () => removeSymptomEntry(s.id),
+        onEdit: (note: string) => updateSymptomDescription(s.id, note),
       });
     }
 
-    // Vaccines (where date exists)
+    // Vaccines
     for (const v of vaccines) {
       if (!filterMember(v.memberId)) continue;
       if (!v.date) continue;
@@ -396,10 +539,12 @@ export default function TimelineScreen() {
         date: v.date,
         color: '#5B7CFA',
         detail: v.notes,
+        onDelete: () => removeVaccine(v.id),
+        onEdit: (note: string) => updateVaccineNotes(v.id, note),
       });
     }
 
-    // Antiparasitics (where dateApplied exists)
+    // Antiparasitics
     for (const a of antiparasitics) {
       if (!filterMember(a.memberId)) continue;
       if (!a.dateApplied) continue;
@@ -411,10 +556,12 @@ export default function TimelineScreen() {
         date: a.dateApplied,
         color: '#5B7CFA',
         detail: a.notes,
+        onDelete: () => removeAntiparasitic(a.id),
+        onEdit: (note: string) => updateAntiparasiticNotes(a.id, note),
       });
     }
 
-    // Checks (where date exists)
+    // Checks
     for (const c of checks) {
       if (!filterMember(c.memberId)) continue;
       if (!c.date) continue;
@@ -426,13 +573,40 @@ export default function TimelineScreen() {
         date: c.date,
         color: '#3B82F6',
         detail: c.notes,
+        onDelete: () => removeCheck(c.id),
+        onEdit: (note: string) => updateCheckNotes(c.id, note),
       });
     }
 
-    // Sort descending
     list.sort((a, b) => b.date.localeCompare(a.date));
     return list;
-  }, [activityLog, moodLog, meals, weightLog, symptomHistory, vaccines, antiparasitics, checks, activePetId]);
+  }, [
+    activityLog,
+    moodLog,
+    meals,
+    weightLog,
+    symptomHistory,
+    vaccines,
+    antiparasitics,
+    checks,
+    activePetId,
+    removeActivity,
+    updateActivityNote,
+    removeMood,
+    updateMoodNote,
+    removeMeal,
+    updateMealNote,
+    removeWeight,
+    updateWeightNote,
+    removeSymptomEntry,
+    updateSymptomDescription,
+    removeVaccine,
+    updateVaccineNotes,
+    removeAntiparasitic,
+    updateAntiparasiticNotes,
+    removeCheck,
+    updateCheckNotes,
+  ]);
 
   const petFiltered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -454,6 +628,19 @@ export default function TimelineScreen() {
     return map;
   }, [petFiltered]);
 
+  // Initialize expandedDates with the first group expanded whenever group set changes
+  const groupedForMode = activeKind === 'human' ? humanGrouped : petGrouped;
+  const datesKey = groupedForMode.map((g) => g.label).join('|');
+  if (datesKey !== initializedDatesKey) {
+    // Render-phase state init pattern: schedule the update.
+    // Using setState directly during render is OK if we guard the condition.
+    setTimeout(() => {
+      const first = groupedForMode[0]?.label;
+      setExpandedDates(first ? new Set([first]) : new Set());
+      setInitializedDatesKey(datesKey);
+    }, 0);
+  }
+
   // Pet hero stats (last 7 days)
   const last7activ = activityLog.filter((a) => withinDays(a.date, 7) && (!activePetId || !a.memberId || a.memberId === activePetId)).length;
   const last7meals = meals.filter((m) => withinDays(m.date, 7) && (!activePetId || !m.memberId || m.memberId === activePetId)).length;
@@ -462,7 +649,6 @@ export default function TimelineScreen() {
     checks.filter((c) => withinDays(c.date, 7) && (!activePetId || !c.memberId || c.memberId === activePetId)).length
   );
 
-  // Latest dailyStatus for status pill
   const latestStatus = [...dailyStatuses]
     .filter((d) => !activePetId || !d.memberId || d.memberId === activePetId)
     .sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -483,15 +669,64 @@ export default function TimelineScreen() {
       ? 'appetito buono'
       : 'appetito stabile';
 
+  // ── Edit/Delete handlers ──
+  function openEditHuman(ev: TimelineEvent) {
+    setEditTarget({ kind: 'human', id: ev.id, title: ev.title, description: ev.description ?? '' });
+    setEditTitle(ev.title);
+    setEditDesc(ev.description ?? '');
+  }
+  function openEditPet(ev: PetTimelineEvent) {
+    if (!ev.onEdit) return;
+    const initial = ev.detail ?? ev.subtitle ?? '';
+    setEditTarget({ kind: 'pet', id: ev.id, note: initial, onEdit: ev.onEdit });
+    setEditTitle('');
+    setEditDesc(initial);
+  }
+  function confirmSaveEdit() {
+    if (!editTarget) return;
+    void Haptics.selectionAsync();
+    if (editTarget.kind === 'human') {
+      updateTimeline(editTarget.id, { title: editTitle.trim() || editTarget.title, description: editDesc });
+    } else {
+      editTarget.onEdit(editDesc);
+    }
+    setEditTarget(null);
+  }
+
+  function openDeleteHuman(ev: TimelineEvent) {
+    setConfirmDel({ kind: 'human', id: ev.id, name: ev.title });
+  }
+  function openDeletePet(ev: PetTimelineEvent) {
+    if (!ev.onDelete) return;
+    setConfirmDel({ kind: 'pet', id: ev.id, name: ev.title, onDelete: ev.onDelete });
+  }
+  async function executeDelete() {
+    if (!confirmDel) return;
+    void Haptics.selectionAsync();
+    if (confirmDel.kind === 'human') {
+      try {
+        await removeTimeline(confirmDel.id, getToken);
+      } catch {
+        // ignore
+      }
+    } else {
+      confirmDel.onDelete();
+    }
+    setConfirmDel(null);
+  }
+
   // ── Render human mode ─────────────────────────────────────────────────────
 
   if (activeKind === 'human') {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>📈 Timeline Salute</Text>
-          <Text style={styles.headerSub}>Tutta la tua storia sanitaria in ordine cronologico</Text>
+        {/* Header with member switcher */}
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle}>📈 Timeline Salute</Text>
+            <Text style={styles.headerSub}>Tutta la tua storia sanitaria in ordine cronologico</Text>
+          </View>
+          <MemberSwitcher kind="human" accent={HUMAN_ACCENT} variant="compact" />
         </View>
 
         {/* Search */}
@@ -512,14 +747,24 @@ export default function TimelineScreen() {
         </View>
 
         {/* Filter chips */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
           {HUMAN_CHIPS.map((c) => {
             const active = humanFilter === c.key;
             return (
               <Pressable
                 key={c.key ?? 'all'}
-                onPress={() => setHumanFilter(c.key)}
-                style={[styles.chip, active && styles.chipActive]}
+                onPress={() => {
+                  void Haptics.selectionAsync();
+                  setHumanFilter(c.key);
+                }}
+                style={[
+                  styles.chip,
+                  active && { backgroundColor: HUMAN_ACCENT, borderColor: HUMAN_ACCENT },
+                ]}
               >
                 <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>{c.label}</Text>
               </Pressable>
@@ -577,20 +822,31 @@ export default function TimelineScreen() {
             </View>
           )}
 
-          {/* Events list */}
-          {humanGrouped.map((group) => (
-            <View key={group.label} style={{ marginBottom: 8 }}>
-              <Text style={styles.groupTitle}>{group.label}</Text>
-              {group.items.map((e) => (
-                <EventCard
-                  key={e.id}
-                  event={e}
-                  expanded={expandedId === e.id}
-                  onToggle={() => toggleExpand(e.id)}
-                />
-              ))}
-            </View>
-          ))}
+          {/* Date cards */}
+          {humanGrouped.map((group) => {
+            const expanded = expandedDates.has(group.label);
+            return (
+              <DateCard
+                key={group.label}
+                label={group.label}
+                count={group.items.length}
+                expanded={expanded}
+                onToggle={() => toggleDateExpand(group.label)}
+              >
+                {group.items.map((e, idx) => (
+                  <HumanEventRow
+                    key={e.id}
+                    event={e}
+                    expanded={expandedId === e.id}
+                    onToggle={() => toggleExpand(e.id)}
+                    onEdit={() => openEditHuman(e)}
+                    onDelete={() => openDeleteHuman(e)}
+                    isLast={idx === group.items.length - 1}
+                  />
+                ))}
+              </DateCard>
+            );
+          })}
 
           {humanFiltered.length === 0 && (
             <View style={styles.emptyBox}>
@@ -614,6 +870,9 @@ export default function TimelineScreen() {
             </View>
           )}
         </ScrollView>
+
+        {renderConfirmDelete()}
+        {renderEditModal()}
       </SafeAreaView>
     );
   }
@@ -622,10 +881,13 @@ export default function TimelineScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF9F5' }} edges={['top', 'bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>🐾 Diario Benessere</Text>
-        <Text style={styles.headerSub}>Attività, pasti, sintomi e visite in ordine cronologico</Text>
+      {/* Header with member switcher */}
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>🐾 Diario Benessere</Text>
+          <Text style={styles.headerSub}>Attività, pasti, sintomi e visite in ordine cronologico</Text>
+        </View>
+        <MemberSwitcher kind="pet" accent={PET_ACCENT} variant="compact" />
       </View>
 
       {/* Search */}
@@ -646,14 +908,24 @@ export default function TimelineScreen() {
       </View>
 
       {/* Pet filter chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.chipRow}
+      >
         {PET_CHIPS.map((c) => {
           const active = petFilter === c.key;
           return (
             <Pressable
               key={c.key ?? 'all'}
-              onPress={() => setPetFilter(c.key)}
-              style={[styles.chip, active && [styles.chipActive, { backgroundColor: PET_ACCENT, borderColor: PET_ACCENT }]]}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setPetFilter(c.key);
+              }}
+              style={[
+                styles.chip,
+                active && { backgroundColor: PET_ACCENT, borderColor: PET_ACCENT },
+              ]}
             >
               <Text style={[styles.chipTxt, active && styles.chipTxtActive]}>{c.label}</Text>
             </Pressable>
@@ -689,20 +961,31 @@ export default function TimelineScreen() {
           </View>
         ) : null}
 
-        {/* Pet events list */}
-        {petGrouped.map((group) => (
-          <View key={group.label} style={{ marginBottom: 8 }}>
-            <Text style={styles.groupTitle}>{group.label}</Text>
-            {group.items.map((e) => (
-              <PetEventCard
-                key={e.id}
-                event={e}
-                expanded={expandedId === e.id}
-                onToggle={() => toggleExpand(e.id)}
-              />
-            ))}
-          </View>
-        ))}
+        {/* Pet date cards */}
+        {petGrouped.map((group) => {
+          const expanded = expandedDates.has(group.label);
+          return (
+            <DateCard
+              key={group.label}
+              label={group.label}
+              count={group.items.length}
+              expanded={expanded}
+              onToggle={() => toggleDateExpand(group.label)}
+            >
+              {group.items.map((e, idx) => (
+                <PetEventRow
+                  key={e.id}
+                  event={e}
+                  expanded={expandedId === e.id}
+                  onToggle={() => toggleExpand(e.id)}
+                  onEdit={e.onEdit ? () => openEditPet(e) : undefined}
+                  onDelete={e.onDelete ? () => openDeletePet(e) : undefined}
+                  isLast={idx === group.items.length - 1}
+                />
+              ))}
+            </DateCard>
+          );
+        })}
 
         {petFiltered.length === 0 && (
           <View style={styles.emptyBox}>
@@ -726,14 +1009,96 @@ export default function TimelineScreen() {
           </View>
         )}
       </ScrollView>
+
+      {renderConfirmDelete()}
+      {renderEditModal()}
     </SafeAreaView>
   );
+
+  // ── Modal renderers ─────────────────────────────────────────────────────
+  function renderConfirmDelete() {
+    const accent = activeKind === 'human' ? HUMAN_ACCENT : PET_ACCENT;
+    return (
+      <Modal visible={confirmDel !== null} transparent animationType="slide" onRequestClose={() => setConfirmDel(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setConfirmDel(null)} />
+        <View style={styles.modalSheet}>
+          <View style={styles.sheetHandle} />
+          <Text style={styles.modalTitle}>Conferma eliminazione</Text>
+          <Text style={styles.modalSub}>
+            Rimuovere <Text style={{ fontWeight: '700', color: colors.ink }}>{confirmDel?.name}</Text>?{'\n'}
+            Questa operazione non può essere annullata.
+          </Text>
+          <View style={{ height: 16 }} />
+          <Pressable style={[styles.saveBtn, { backgroundColor: '#EF4444' }]} onPress={executeDelete}>
+            <Text style={styles.saveBtnTxt}>Elimina</Text>
+          </Pressable>
+          <Pressable style={styles.cancelBtn} onPress={() => setConfirmDel(null)}>
+            <Text style={[styles.cancelBtnTxt, { color: accent }]}>Annulla</Text>
+          </Pressable>
+        </View>
+      </Modal>
+    );
+  }
+
+  function renderEditModal() {
+    const accent = activeKind === 'human' ? HUMAN_ACCENT : PET_ACCENT;
+    const isHuman = editTarget?.kind === 'human';
+    return (
+      <Modal visible={editTarget !== null} transparent animationType="slide" onRequestClose={() => setEditTarget(null)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setEditTarget(null)} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalSheet}
+        >
+          <View style={styles.sheetHandle} />
+          <Text style={styles.modalTitle}>Modifica evento</Text>
+          {isHuman && (
+            <>
+              <Text style={styles.fieldLabel}>Titolo</Text>
+              <TextInput
+                style={styles.fieldInput}
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Titolo evento"
+                placeholderTextColor={colors.muted}
+              />
+            </>
+          )}
+          <Text style={styles.fieldLabel}>{isHuman ? 'Descrizione' : 'Nota'}</Text>
+          <TextInput
+            style={[styles.fieldInput, { minHeight: 80, textAlignVertical: 'top' }]}
+            value={editDesc}
+            onChangeText={setEditDesc}
+            placeholder={isHuman ? 'Descrizione' : 'Aggiungi una nota'}
+            placeholderTextColor={colors.muted}
+            multiline
+            numberOfLines={3}
+          />
+          <View style={{ height: 12 }} />
+          <Pressable style={[styles.saveBtn, { backgroundColor: accent }]} onPress={confirmSaveEdit}>
+            <Text style={styles.saveBtnTxt}>Salva</Text>
+          </Pressable>
+          <Pressable style={styles.cancelBtn} onPress={() => setEditTarget(null)}>
+            <Text style={[styles.cancelBtnTxt, { color: accent }]}>Annulla</Text>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
+    );
+  }
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 8 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 12,
+  },
   headerTitle: { fontSize: 22, fontWeight: '800', color: colors.ink },
   headerSub: { fontSize: 12, color: colors.muted, marginTop: 2 },
 
@@ -755,18 +1120,18 @@ const styles = StyleSheet.create({
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: radii.pill,
+    borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
+    height: 36,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipEmoji: { fontSize: 13 },
   chipTxt: { fontSize: 13, fontWeight: '600', color: colors.ink },
   chipTxtActive: { color: '#fff', fontWeight: '700' },
+  chipEmoji: { fontSize: 13 },
 
   hero: {
     borderRadius: 20,
@@ -788,7 +1153,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
     backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: radii.pill,
+    borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 7,
     marginTop: 16,
@@ -836,29 +1201,56 @@ const styles = StyleSheet.create({
   trendFill: { width: 16, borderRadius: 5 },
   trendDay: { fontSize: 11, color: colors.muted, fontWeight: '600' },
 
-  groupTitle: { color: colors.muted, fontWeight: '700', marginBottom: 8, marginTop: 6, fontSize: 13 },
-
-  // Human event card
-  eventCard: {
+  // Date card (expandable group)
+  dateCard: {
     backgroundColor: '#fff',
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.border,
-    borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    marginBottom: 10,
+    overflow: 'hidden',
   },
-  // Pet event card — softer, 18px radius
-  petEventCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#F3F4F6',
-    borderLeftWidth: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 8,
+  dateCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 10,
+  },
+  dateCardLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.ink,
+    textTransform: 'capitalize',
+  },
+  countBadge: {
+    backgroundColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  countBadgeTxt: { fontSize: 11, fontWeight: '700', color: colors.muted },
+  dateCardBody: {
+    paddingHorizontal: 10,
+    paddingBottom: 10,
+  },
+
+  // Inner event row (inside date card)
+  innerEventRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: 10,
+  },
+  innerEventRowSep: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  leftBar: {
+    width: 4,
+    borderRadius: 2,
+    marginRight: 10,
+  },
+  innerEventInner: {
+    flex: 1,
   },
 
   eventRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -868,7 +1260,12 @@ const styles = StyleSheet.create({
   eventType: { fontSize: 11, fontWeight: '600', marginTop: 2 },
   eventTime: { color: colors.muted, fontSize: 12, fontWeight: '600' },
 
-  eventDetail: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  actionsCol: { alignItems: 'flex-end', gap: 4 },
+  actionsRow: { flexDirection: 'row', gap: 8 },
+  actionBtn: { padding: 2 },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+
+  eventDetail: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
   eventDetailDate: { fontSize: 11, color: colors.muted, textTransform: 'capitalize', marginBottom: 6 },
   eventDesc: { fontSize: 13, color: colors.ink, lineHeight: 19 },
   eventMedia: { width: 84, height: 84, borderRadius: 12, backgroundColor: '#F3F4F6' },
@@ -903,4 +1300,52 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   ctaBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  // Modals (bottom-sheet)
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  modalSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: 12,
+  },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: colors.ink, marginBottom: 6 },
+  modalSub: { fontSize: 13, color: colors.muted, lineHeight: 19 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: colors.muted, marginTop: 12, marginBottom: 6 },
+  fieldInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.ink,
+    backgroundColor: '#fff',
+  },
+  saveBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  saveBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  cancelBtn: {
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  cancelBtnTxt: { fontWeight: '700', fontSize: 14 },
 });

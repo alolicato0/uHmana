@@ -13,6 +13,7 @@ export interface Meal {
   food: string;
   grams?: number;
   memberId?: string;
+  note?: string;
 }
 
 export interface WeightEntry {
@@ -20,6 +21,7 @@ export interface WeightEntry {
   date: string;   // YYYY-MM-DD
   kg: number;
   memberId?: string;
+  note?: string;
 }
 
 interface PetNutritionState {
@@ -29,7 +31,10 @@ interface PetNutritionState {
   waterDate: string;  // YYYY-MM-DD of last water update
   addMeal: (m: Omit<Meal, 'id'>) => void;
   removeMeal: (id: string) => void;
+  updateMealNote: (id: string, note: string) => void;
   addWeight: (e: Omit<WeightEntry, 'id'>) => void;
+  removeWeight: (id: string) => void;
+  updateWeightNote: (id: string, note: string) => void;
   setWater: (level: WaterLevel) => void;
 }
 
@@ -51,9 +56,22 @@ export const usePetNutritionStore = create<PetNutritionState>()(
       removeMeal: (id) =>
         set((s) => ({ meals: s.meals.filter((m) => m.id !== id) })),
 
+      updateMealNote: (id, note) =>
+        set((s) => ({
+          meals: s.meals.map((m) => (m.id === id ? { ...m, note } : m)),
+        })),
+
       addWeight: (e) =>
         set((s) => ({
           weightLog: [{ ...e, id: Date.now().toString() }, ...s.weightLog],
+        })),
+
+      removeWeight: (id) =>
+        set((s) => ({ weightLog: s.weightLog.filter((w) => w.id !== id) })),
+
+      updateWeightNote: (id, note) =>
+        set((s) => ({
+          weightLog: s.weightLog.map((w) => (w.id === id ? { ...w, note } : w)),
         })),
 
       setWater: (level) => set({ waterLevel: level, waterDate: today() }),

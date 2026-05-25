@@ -51,6 +51,8 @@ interface VetState {
   addMonitorItem: (item: Omit<MonitorItem, 'id' | 'createdAt'>) => void;
   removeMonitorItem: (id: string) => void;
   addSymptomEntry: (entry: Omit<SymptomEntry, 'id' | 'createdAt'>) => void;
+  removeSymptomEntry: (id: string) => void;
+  updateSymptomDescription: (id: string, description: string) => void;
   sendVetMessage: (
     text: string,
     opts: { getToken: () => Promise<string | null>; petName?: string; attachments?: ChatAttachment[] },
@@ -84,6 +86,16 @@ export const useVetStore = create<VetState>()(
             { ...entry, id: Date.now().toString(), createdAt: new Date().toISOString() },
             ...s.symptomHistory,
           ],
+        })),
+
+      removeSymptomEntry: (id) =>
+        set((s) => ({ symptomHistory: s.symptomHistory.filter((e) => e.id !== id) })),
+
+      updateSymptomDescription: (id, description) =>
+        set((s) => ({
+          symptomHistory: s.symptomHistory.map((e) =>
+            e.id === id ? { ...e, description } : e,
+          ),
         })),
 
       sendVetMessage: async (text, { getToken, petName = 'il tuo animale', attachments }) => {
