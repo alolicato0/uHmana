@@ -81,6 +81,15 @@ export async function scheduleReminder(reminder: Reminder): Promise<void> {
       break;
     }
     case 'daily': {
+      // Se la terapia inizia in futuro, non schedulare ancora.
+      // rescheduleAll verrà richiamato dal load e ripianificherà quando la data sarà passata.
+      if (reminder.schedule.date) {
+        const start = new Date(reminder.schedule.date);
+        start.setHours(0, 0, 0, 0);
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        if (start > todayStart) return;
+      }
       await scheduleOne(reminder, {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour,

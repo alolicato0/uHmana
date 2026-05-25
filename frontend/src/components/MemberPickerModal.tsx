@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   memberEmoji,
@@ -32,9 +33,21 @@ export function MemberPickerModal({
     | PetMember[];
   const activeId = useMembersStore((s) => (kind === 'human' ? s.activeHumanId : s.activePetId));
 
-  const handlePick = (id: string) => {
+  const [selectedId, setSelectedId] = useState<string | null>(activeId);
+
+  useEffect(() => {
+    if (visible) setSelectedId(activeId);
+  }, [visible, activeId]);
+
+  const handleSelect = (id: string) => {
     void Haptics.selectionAsync();
-    onPick(id);
+    setSelectedId(id);
+  };
+
+  const handleConfirm = () => {
+    if (!selectedId) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPick(selectedId);
   };
 
   return (
@@ -44,22 +57,29 @@ export function MemberPickerModal({
         <View style={styles.handle} />
         <Text style={styles.title}>{title}</Text>
         {(members as (HumanMember | PetMember)[]).map((m) => {
-          const isActive = m.id === activeId;
+          const isSelected = m.id === selectedId;
           return (
             <Pressable
               key={m.id}
-              onPress={() => handlePick(m.id)}
+              onPress={() => handleSelect(m.id)}
               style={[
                 styles.row,
-                isActive && { borderColor: accent, backgroundColor: accent + '14' },
+                isSelected && { borderColor: accent, backgroundColor: accent + '14' },
               ]}
             >
               <Text style={styles.emoji}>{memberEmoji(m)}</Text>
               <Text style={styles.name}>{m.name}</Text>
-              {isActive && <Ionicons name="checkmark-circle" size={20} color={accent} />}
+              {isSelected && <Ionicons name="checkmark-circle" size={20} color={accent} />}
             </Pressable>
           );
         })}
+        <Pressable
+          style={[styles.confirm, { backgroundColor: accent }, !selectedId && { opacity: 0.4 }]}
+          onPress={handleConfirm}
+          disabled={!selectedId}
+        >
+          <Text style={styles.confirmTxt}>Salva</Text>
+        </Pressable>
         <Pressable style={styles.cancel} onPress={onClose}>
           <Text style={styles.cancelTxt}>Annulla</Text>
         </Pressable>
@@ -100,6 +120,13 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 22 },
   name: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
+  confirm: {
+    marginTop: 8,
+    paddingVertical: 13,
+    borderRadius: 999,
+    alignItems: 'center',
+  },
+  confirmTxt: { fontSize: 15, fontWeight: '700', color: '#fff' },
   cancel: {
     marginTop: 8,
     paddingVertical: 12,
