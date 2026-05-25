@@ -326,43 +326,51 @@ export default function PianoSaluteScreen() {
     const today = new Date().toISOString().slice(0, 10);
     const startDate = form.startDate || today;
     const endDate = form.endDate;
-    if (endDate && endDate > startDate) {
-      const cur = new Date(startDate);
-      const end = new Date(endDate);
-      while (cur <= end) {
-        const dayISO = cur.toISOString().slice(0, 10);
-        for (const t of times) {
-          await addReminder(
-            {
+    let failures = 0;
+    const addOne = async (payload: Omit<Reminder, 'id'>) => {
+      try {
+        await addReminder(payload, getToken);
+      } catch {
+        failures++;
+      }
+    };
+    try {
+      if (endDate && endDate > startDate) {
+        const cur = new Date(startDate);
+        const end = new Date(endDate);
+        while (cur <= end) {
+          const dayISO = cur.toISOString().slice(0, 10);
+          for (const t of times) {
+            await addOne({
               category: 'medication',
               title,
               notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
               schedule: { kind: 'once', date: dayISO, time: t },
               enabled: true,
               memberId: picked.id ?? undefined,
-            },
-            getToken,
-          );
+            });
+          }
+          cur.setDate(cur.getDate() + 1);
         }
-        cur.setDate(cur.getDate() + 1);
-      }
-    } else {
-      for (const t of times) {
-        await addReminder(
-          {
+      } else {
+        for (const t of times) {
+          await addOne({
             category: 'medication',
             title,
             notes: `${freqLabel}${form.notes ? '\n' + form.notes : ''}`,
             schedule: { kind: 'daily', time: t, date: startDate },
             enabled: true,
             memberId: picked.id ?? undefined,
-          },
-          getToken,
-        );
+          });
+        }
+      }
+    } finally {
+      setAddOpen(false);
+      setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10), endDate: '' });
+      if (failures > 0) {
+        Alert.alert('Salvataggio parziale', `${failures} promemoria non sono stati salvati (problema di connessione). Riprova più tardi.`);
       }
     }
-    setAddOpen(false);
-    setForm({ name: '', dose: '', time: '08:00', frequency: '24h', days: '7', notes: '', startDate: new Date().toISOString().slice(0,10), endDate: '' });
   };
 
   const handleDeleteMed = (title: string, ids: string[]) => {
