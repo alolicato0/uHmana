@@ -77,11 +77,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: mode.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 32 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', paddingTop: 8 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{mode.greeting(firstName)}</Text>
-            <Text style={styles.subtitle}>{mode.subtitle}</Text>
+            <Text style={styles.subtitle} numberOfLines={2}>{mode.subtitle}</Text>
           </View>
           <Pressable onPress={() => router.push('/notifications')} hitSlop={8} style={{ padding: 4 }}>
             <Ionicons name="notifications-outline" size={26} color={colors.ink} />
@@ -93,29 +93,29 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 12 }} />
         <KindToggle kind={activeKind} onChange={setKind} accent={mode.primary} />
 
-        <View style={{ height: 14 }} />
+        <View style={{ height: 10 }} />
         <MemberSwitcher kind={activeKind} accent={mode.primary} variant="header" />
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 12 }} />
         <HeroCard mode={mode} kind={activeKind} />
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 12 }} />
         <FamilySection kind={activeKind} accent={mode.primary} />
 
-        <View style={{ height: 20 }} />
+        <View style={{ height: 12 }} />
         <View style={styles.grid}>
           {mode.tiles.map((t) => (
             <FeatureTile key={t.title} tile={t} radius={mode.cardRadius} />
           ))}
         </View>
 
-        <View style={{ height: 16 }} />
+        <View style={{ height: 10 }} />
         <EmergencyCta onPress={() => router.push('/emergency')} />
 
-        <View style={{ height: 24 }} />
+        <View style={{ height: 12 }} />
         <UpcomingSection
           title={mode.upcomingSectionTitle}
           items={upcoming}
@@ -325,12 +325,12 @@ function HeroCard({ mode, kind }: { mode: ModeConfig; kind: ProfileKind }) {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <Ionicons name="heart" size={18} color="#fff" />
-        <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>{mode.heroLabel}</Text>
+        <Text style={{ color: '#fff', marginLeft: 6, fontWeight: '600' }}>{mode.heroLabel}</Text>
       </View>
-      <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 12 }}>
+      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 8 }}>
         {title}
       </Text>
-      <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 4 }}>
+      <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 2 }}>
         {subtitle}
       </Text>
     </LinearGradient>
@@ -345,19 +345,19 @@ function FeatureTile({ tile, radius }: { tile: FeatureTileConfig; radius: number
     >
       <View
         style={{
-          width: 38,
-          height: 38,
-          borderRadius: 11,
+          width: 34,
+          height: 34,
+          borderRadius: 10,
           backgroundColor: tile.color + '22',
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <Ionicons name={tile.icon} size={20} color={tile.color} />
+        <Ionicons name={tile.icon} size={18} color={tile.color} />
       </View>
-      <View style={{ marginTop: 12 }}>
-        <Text style={{ fontWeight: '700', fontSize: 14 }}>{tile.title}</Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{tile.subtitle}</Text>
+      <View style={{ marginTop: 8 }}>
+        <Text style={{ fontWeight: '700', fontSize: 13 }}>{tile.title}</Text>
+        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{tile.subtitle}</Text>
       </View>
     </Pressable>
   );

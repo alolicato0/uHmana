@@ -37,6 +37,8 @@ interface MembersState {
   getActive: (kind: MemberKind) => HumanMember | PetMember | null;
   getMembers: (kind: MemberKind) => (HumanMember | PetMember)[];
   hasMultiple: (kind: MemberKind) => boolean;
+  getDefaultId: (kind: MemberKind) => string | null;
+  isDefault: (kind: MemberKind, id: string | null) => boolean;
 }
 
 export const useMembersStore = create<MembersState>()(
@@ -102,6 +104,18 @@ export const useMembersStore = create<MembersState>()(
       getMembers: (kind) => (kind === 'human' ? get().humans : get().pets),
 
       hasMultiple: (kind) => (kind === 'human' ? get().humans.length >= 2 : get().pets.length >= 2),
+
+      getDefaultId: (kind) => {
+        const s = get();
+        return kind === 'human' ? (s.humans[0]?.id ?? null) : (s.pets[0]?.id ?? null);
+      },
+
+      isDefault: (kind, id) => {
+        if (!id) return false;
+        const s = get();
+        const defaultId = kind === 'human' ? (s.humans[0]?.id ?? null) : (s.pets[0]?.id ?? null);
+        return id === defaultId;
+      },
     }),
     {
       name: 'members-store',

@@ -353,6 +353,18 @@ export default function TimelineScreen() {
 
   const activePetId = useMembersStore((s) => s.activePetId);
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
+  const isDefault = useMembersStore((s) => s.isDefault);
+
+  function belongsTo(
+    entryMemberId: string | undefined | null,
+    activeId: string | null,
+    kind: 'human' | 'pet',
+  ) {
+    if (!activeId) return true;
+    if (entryMemberId && entryMemberId === activeId) return true;
+    if (!entryMemberId && isDefault(kind, activeId)) return true;
+    return false;
+  }
 
   const [humanFilter, setHumanFilter] = useState<TimelineEventType | null>(null);
   const [petFilter, setPetFilter] = useState<PetCategory | null>(null);
@@ -400,11 +412,12 @@ export default function TimelineScreen() {
     const q = search.trim().toLowerCase();
     return events.filter((e) => {
       if (humanFilter && e.type !== humanFilter) return false;
-      if (activeHumanId && e.memberId && e.memberId !== activeHumanId) return false;
+      if (!belongsTo(e.memberId, activeHumanId, 'human')) return false;
       if (q && !(e.title.toLowerCase().includes(q) || (e.description ?? '').toLowerCase().includes(q))) return false;
       return true;
     });
-  }, [events, humanFilter, search, activeHumanId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, humanFilter, search, activeHumanId, isDefault]);
 
   const humanGrouped = useMemo(() => {
     const map: { label: string; items: TimelineEvent[] }[] = [];
@@ -417,13 +430,26 @@ export default function TimelineScreen() {
     return map;
   }, [humanFiltered]);
 
-  const last30 = events.filter((e) => now - new Date(e.date).getTime() <= 30 * DAY);
+  const last30 = events.filter(
+    (e) =>
+      now - new Date(e.date).getTime() <= 30 * DAY &&
+      belongsTo(e.memberId, activeHumanId, 'human'),
+  );
   const countType = (t: TimelineEventType) => last30.filter((e) => e.type === t).length;
   const symptomCount = countType('symptom');
   const visitCount = countType('visit');
   const examCount = countType('exam');
   const activeTherapies = [
-    ...new Set(reminders.filter((r) => r.enabled && r.category === 'medication').map((r) => r.title)),
+    ...new Set(
+      reminders
+        .filter(
+          (r) =>
+            r.enabled &&
+            r.category === 'medication' &&
+            belongsTo(r.memberId, activeHumanId, 'human'),
+        )
+        .map((r) => r.title),
+    ),
   ].length;
 
   const report = buildInsightReport(logs, wellness, reminders);
@@ -437,17 +463,13 @@ export default function TimelineScreen() {
 
   // ── Pet mode data ──
   const petEvents = useMemo<PetTimelineEvent[]>(() => {
-    const filterMember = (memberId?: string) => {
-      if (!memberId) return true;
-      if (!activePetId) return true;
-      return memberId === activePetId;
-    };
+    const inMember = (memberId?: string) => belongsTo(memberId, activePetId, 'pet');
 
     const list: PetTimelineEvent[] = [];
 
     // Activity
     for (const a of activityLog) {
-      if (!filterMember(a.memberId)) continue;
+      if (!inMember(a.memberId)) continue;
       const emoji = a.type === 'passeggiata' ? '🚶' : a.type === 'gioco' ? '🎾' : '🏃';
       list.push({
         id: `act-${a.id}`,
@@ -465,7 +487,7 @@ export default function TimelineScreen() {
 
     // Mood
     for (const m of moodLog) {
-      if (!filterMember(m.memberId)) continue;
+      if (!inMember(m.memberId)) continue;
       list.push({
         id: `mood-${m.id}`,
         category: 'umore',
@@ -482,7 +504,7 @@ export default function TimelineScreen() {
 
     // Meals
     for (const meal of meals) {
-      if (!filterMember(meal.memberId)) continue;
+      if (!inMember(meal.memberId)) continue;
       list.push({
         id: `meal-${meal.id}`,
         category: 'pasto',
@@ -498,7 +520,7 @@ export default function TimelineScreen() {
 
     // Weight
     for (const w of weightLog) {
-      if (!filterMember(w.memberId)) continue;
+      if (!inMember(w.memberId)) continue;
       list.push({
         id: `weight-${w.id}`,
         category: 'pasto',
@@ -513,6 +535,7 @@ export default function TimelineScreen() {
 
     // Symptoms
     for (const s of symptomHistory) {
+      if (!inMember((s as { memberId?: string }).memberId)) continue;
       list.push({
         id: `sym-${s.id}`,
         category: 'sintomo',
@@ -529,7 +552,7 @@ export default function TimelineScreen() {
 
     // Vaccines
     for (const v of vaccines) {
-      if (!filterMember(v.memberId)) continue;
+      if (!inMember(v.memberId)) continue;
       if (!v.date) continue;
       list.push({
         id: `vac-${v.id}`,
@@ -546,7 +569,7 @@ export default function TimelineScreen() {
 
     // Antiparasitics
     for (const a of antiparasitics) {
-      if (!filterMember(a.memberId)) continue;
+      if (!inMember(a.memberId)) continue;
       if (!a.dateApplied) continue;
       list.push({
         id: `anti-${a.id}`,
@@ -563,7 +586,7 @@ export default function TimelineScreen() {
 
     // Checks
     for (const c of checks) {
-      if (!filterMember(c.memberId)) continue;
+      if (!inMember(c.memberId)) continue;
       if (!c.date) continue;
       list.push({
         id: `chk-${c.id}`,
@@ -642,15 +665,15 @@ export default function TimelineScreen() {
   }
 
   // Pet hero stats (last 7 days)
-  const last7activ = activityLog.filter((a) => withinDays(a.date, 7) && (!activePetId || !a.memberId || a.memberId === activePetId)).length;
-  const last7meals = meals.filter((m) => withinDays(m.date, 7) && (!activePetId || !m.memberId || m.memberId === activePetId)).length;
+  const last7activ = activityLog.filter((a) => withinDays(a.date, 7) && belongsTo(a.memberId, activePetId, 'pet')).length;
+  const last7meals = meals.filter((m) => withinDays(m.date, 7) && belongsTo(m.memberId, activePetId, 'pet')).length;
   const last7vetVisits = (
-    symptomHistory.filter((s) => withinDays(s.createdAt, 7)).length +
-    checks.filter((c) => withinDays(c.date, 7) && (!activePetId || !c.memberId || c.memberId === activePetId)).length
+    symptomHistory.filter((s) => withinDays(s.createdAt, 7) && belongsTo((s as { memberId?: string }).memberId, activePetId, 'pet')).length +
+    checks.filter((c) => withinDays(c.date, 7) && belongsTo(c.memberId, activePetId, 'pet')).length
   );
 
   const latestStatus = [...dailyStatuses]
-    .filter((d) => !activePetId || !d.memberId || d.memberId === activePetId)
+    .filter((d) => belongsTo(d.memberId, activePetId, 'pet'))
     .sort((a, b) => b.date.localeCompare(a.date))[0];
 
   const petStatusPill =
