@@ -10,9 +10,18 @@ import {
   type InsightStatus,
   type TrendItem,
 } from '../src/services/insightEngine';
+import { MemberSwitcher } from '../src/components/MemberSwitcher';
+import { useMembersStore } from '../src/store/members';
 import { useRemindersStore } from '../src/store/reminders';
 import { useSymptomsStore, type SymptomLog } from '../src/store/symptoms';
 import { colors, radii } from '../src/theme';
+
+function belongsTo(entryMemberId: string | undefined, activeId: string | null, isDefaultFn: (id: string | null) => boolean): boolean {
+  if (!activeId) return true;
+  if (entryMemberId && entryMemberId === activeId) return true;
+  if (!entryMemberId && isDefaultFn(activeId)) return true;
+  return false;
+}
 
 const STATUS_GRADIENT: Record<InsightStatus, [string, string]> = {
   stable: ['#0DB09E', '#22C55E'],
@@ -21,9 +30,16 @@ const STATUS_GRADIENT: Record<InsightStatus, [string, string]> = {
 };
 
 export default function InsightScreen() {
-  const logs = useSymptomsStore((s) => s.logs);
-  const wellness = useSymptomsStore((s) => s.wellness);
-  const reminders = useRemindersStore((s) => s.reminders);
+  const allLogs = useSymptomsStore((s) => s.logs);
+  const allWellness = useSymptomsStore((s) => s.wellness);
+  const allReminders = useRemindersStore((s) => s.reminders);
+  const activeHumanId = useMembersStore((s) => s.activeHumanId);
+  const isDefault = useMembersStore((s) => s.isDefault);
+  const isDefaultHuman = (id: string | null) => isDefault('human', id);
+
+  const logs = allLogs.filter((l) => belongsTo(l.memberId, activeHumanId, isDefaultHuman));
+  const wellness = allWellness && belongsTo(allWellness.memberId, activeHumanId, isDefaultHuman) ? allWellness : null;
+  const reminders = allReminders.filter((r) => belongsTo(r.memberId, activeHumanId, isDefaultHuman));
 
   const report = buildInsightReport(logs, wellness, reminders);
 
@@ -50,10 +66,11 @@ export default function InsightScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.ink} />
         </Pressable>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Insight Salute</Text>
           <Text style={styles.headerSub}>Analisi intelligente del tuo benessere</Text>
         </View>
+        <MemberSwitcher kind="human" accent={colors.primary} variant="compact" />
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>

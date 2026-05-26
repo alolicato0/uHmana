@@ -25,7 +25,7 @@ import { MemberSwitcher } from '../src/components/MemberSwitcher';
 import { useAuth } from '../src/context/AuthContext';
 import { useMemberPicker } from '../src/hooks/useMemberPicker';
 import { chat, toDataUrl } from '../src/services/openrouter';
-import { computeHealthScore } from '../src/store/symptoms';
+import { computeHealthScore, effectiveEndedAt, formatDurationFromMs } from '../src/store/symptoms';
 import type { DailyWellness, SymptomDuration, SymptomLog } from '../src/store/symptoms';
 import { useSymptomsStore } from '../src/store/symptoms';
 import { useMembersStore } from '../src/store/members';
@@ -153,6 +153,7 @@ export default function SintomiScreen() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SymptomLog | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [endedInfo, setEndedInfo] = useState<{ name: string; emoji: string; duration: string } | null>(null);
   const [wellnessOpen, setWellnessOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [expandedToday, setExpandedToday] = useState(true);
@@ -162,6 +163,7 @@ export default function SintomiScreen() {
   const allLogs = useSymptomsStore((s) => s.logs);
   const allWellness = useSymptomsStore((s) => s.wellness);
   const removeLog = useSymptomsStore((s) => s.removeLog);
+  const terminateLog = useSymptomsStore((s) => s.terminateLog);
 
   const activeHumanId = useMembersStore((s) => s.activeHumanId);
   const isDefaultHuman = useMembersStore((s) => s.isDefault);
@@ -180,6 +182,15 @@ export default function SintomiScreen() {
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (log: SymptomLog) => { setMenuFor(null); setEditing(log); setModalOpen(true); };
   const doRemove = (id: string) => { setMenuFor(null); removeLog(id); };
+  const doTerminate = (id: string) => {
+    const log = logs.find((l) => l.id === id);
+    if (!log) { setMenuFor(null); return; }
+    if (log.endedAt) { setMenuFor(null); return; }
+    const endedAt = terminateLog(id);
+    const dur = formatDurationFromMs(new Date(endedAt).getTime() - new Date(log.date).getTime());
+    setMenuFor(null);
+    setEndedInfo({ name: log.name, emoji: log.emoji, duration: dur });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F0F9F8' }}>
@@ -340,6 +351,23 @@ export default function SintomiScreen() {
                 <Text style={styles.menuText}>Modifica</Text>
               </Pressable>
               <View style={styles.menuDivider} />
+              {(() => {
+                const log = logs.find((l) => l.id === menuFor);
+                const alreadyEnded = !!log && !!effectiveEndedAt(log);
+                return (
+                  <Pressable
+                    style={[styles.menuItem, alreadyEnded && { opacity: 0.4 }]}
+                    onPress={() => !alreadyEnded && menuFor && doTerminate(menuFor)}
+                    disabled={alreadyEnded}
+                  >
+                    <Ionicons name="checkmark-done-outline" size={20} color="#16A34A" />
+                    <Text style={[styles.menuText, { color: '#16A34A' }]}>
+                      {alreadyEnded ? 'Già terminato' : 'Terminato'}
+                    </Text>
+                  </Pressable>
+                );
+              })()}
+              <View style={styles.menuDivider} />
               <Pressable style={styles.menuItem} onPress={() => menuFor && doRemove(menuFor)}>
                 <Ionicons name="trash-outline" size={20} color={colors.danger} />
                 <Text style={[styles.menuText, { color: colors.danger }]}>Elimina</Text>
@@ -347,6 +375,27 @@ export default function SintomiScreen() {
             </View>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* Popup durata terminato */}
+      <Modal visible={!!endedInfo} transparent animationType="fade" onRequestClose={() => setEndedInfo(null)}>
+        <View style={styles.endedBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setEndedInfo(null)} />
+          <View style={styles.endedCard}>
+            <View style={styles.endedIcon}>
+              <Ionicons name="checkmark-circle" size={32} color="#16A34A" />
+            </View>
+            <Text style={styles.endedTitle}>Sintomo terminato</Text>
+            <Text style={styles.endedSymptom}>
+              {endedInfo?.emoji} {endedInfo?.name}
+            </Text>
+            <Text style={styles.endedDurLabel}>Durata totale</Text>
+            <Text style={styles.endedDurVal}>{endedInfo?.duration}</Text>
+            <Pressable style={styles.endedBtn} onPress={() => setEndedInfo(null)}>
+              <Text style={styles.endedBtnTxt}>Ok</Text>
+            </Pressable>
+          </View>
+        </View>
       </Modal>
 
       {/* Modal aggiunta/modifica sintomo */}
@@ -412,13 +461,17 @@ function HeroStat({ label, value }: { label: string; value: string }) {
 // ─── Symptom card ─────────────────────────────────────────────────────────────
 
 function SymptomCard({ log, onMenu, todayMode }: { log: SymptomLog; onMenu: () => void; todayMode: boolean }) {
+  const endedAt = effectiveEndedAt(log);
+  const duration = endedAt
+    ? formatDurationFromMs(new Date(endedAt).getTime() - new Date(log.date).getTime())
+    : null;
   return (
-    <View style={styles.symCard}>
+    <View style={[styles.symCard, !!endedAt && { opacity: 0.7 }]}>
       <Text style={{ fontSize: 22 }}>{log.emoji}</Text>
       <View style={{ flex: 1, marginLeft: 8 }}>
         <Text style={styles.symName} numberOfLines={1}>{log.name}</Text>
-        <Text style={[styles.symStatus, { color: intensityColor(log.intensity) }]}>
-          {intensityLabel(log.intensity)} · {formatLogDate(log.date, todayMode)}
+        <Text style={[styles.symStatus, { color: endedAt ? colors.muted : intensityColor(log.intensity) }]}>
+          {endedAt ? `✓ Terminato · ${duration}` : `${intensityLabel(log.intensity)} · ${formatLogDate(log.date, todayMode)}`}
         </Text>
       </View>
       <Pressable onPress={onMenu} hitSlop={8} style={styles.dots}>
@@ -1103,6 +1156,15 @@ const styles = StyleSheet.create({
   // Menu 3 puntini
   menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
   menuSheet: { backgroundColor: '#fff', borderRadius: radii.lg, width: 220, overflow: 'hidden' },
+  endedBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 32 },
+  endedCard: { backgroundColor: '#fff', borderRadius: radii.lg, padding: 24, width: '100%', alignItems: 'center' },
+  endedIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center', marginBottom: 12 },
+  endedTitle: { fontSize: 18, fontWeight: '800', color: colors.ink, marginBottom: 8 },
+  endedSymptom: { fontSize: 15, fontWeight: '600', color: colors.ink, marginBottom: 14 },
+  endedDurLabel: { fontSize: 12, color: colors.muted, marginBottom: 4 },
+  endedDurVal: { fontSize: 26, fontWeight: '800', color: '#16A34A', marginBottom: 20 },
+  endedBtn: { backgroundColor: colors.primary, borderRadius: radii.pill, paddingVertical: 12, paddingHorizontal: 48 },
+  endedBtnTxt: { color: '#fff', fontWeight: '800', fontSize: 15 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, paddingHorizontal: 18 },
   menuText: { fontSize: 15, fontWeight: '500', color: colors.ink },
   menuDivider: { height: 1, backgroundColor: colors.border },

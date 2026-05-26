@@ -93,7 +93,10 @@ export default function HomeScreen() {
               const now = new Date();
               now.setHours(0, 0, 0, 0);
               const days = Math.round((target.getTime() - now.getTime()) / 86400000);
-              const when = days < 0 ? `scaduto ${Math.abs(days)}gg fa` : days === 0 ? 'oggi' : days === 1 ? 'domani' : `tra ${days}gg`;
+              const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+              const dateLabel = `${d} ${months[m-1]} ${y}`;
+              const rel = days < 0 ? `scaduto ${Math.abs(days)}gg fa` : days === 0 ? 'oggi' : days === 1 ? 'domani' : `tra ${days}gg`;
+              const when = `${dateLabel} · ${rel}`;
               const setter = it.kind === 'v' ? setVaccineStatus : it.kind === 'a' ? setAntiparasiticStatus : setCheckStatus;
               return {
                 id: it.id,
@@ -108,10 +111,27 @@ export default function HomeScreen() {
       : reminders
           .filter((r) => r.enabled && belongsTo(r.memberId, activeHumanId, isDefaultHuman))
           .slice(0, 3)
-          .map((r) => ({
+          .map((r) => {
+            const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+            const fmtDate = (iso?: string) => {
+              if (!iso) return '';
+              const [y, m, d] = iso.split('-').map(Number);
+              return `${d} ${months[m-1]} ${y}`;
+            };
+            const timePart = r.schedule.time ?? '';
+            let datePart = '';
+            if (r.schedule.kind === 'once') {
+              datePart = fmtDate(r.schedule.date);
+            } else if (r.schedule.kind === 'daily') {
+              datePart = r.schedule.date ? `dal ${fmtDate(r.schedule.date)}` : 'ogni giorno';
+            } else {
+              datePart = r.schedule.kind;
+            }
+            const time = [datePart, timePart].filter(Boolean).join(' · ');
+            return {
             id: r.id,
             title: r.title,
-            time: r.schedule.time ?? r.schedule.kind,
+            time,
             status: r.status,
             onSetStatus: (s: StatusVal) => {
               if (s === 'postponed') return;
@@ -122,7 +142,8 @@ export default function HomeScreen() {
               setLocalReminderStatus(r.id, 'postponed');
               void updateReminder(r.id, { status: 'postponed', postponedUntil: date }, getToken);
             }),
-          }));
+            };
+          });
 
   const seenIds = useNotifSeenStore((s) => s.seenIds);
   const notifIds: string[] =
@@ -386,10 +407,11 @@ function HeroCard({ mode, kind }: { mode: ModeConfig; kind: ProfileKind }) {
       title = 'Necessita attenzione';
     }
 
-    // Calcola "ultimo aggiornamento"
+    // Calcola "ultimo aggiornamento" (usa ts esatto se disponibile)
     const times: Date[] = [];
     if (logs.length > 0) times.push(new Date(logs[0].date));
-    if (wellness?.date) times.push(new Date(wellness.date + 'T12:00:00'));
+    if (wellness?.ts) times.push(new Date(wellness.ts));
+    else if (wellness?.date) times.push(new Date(wellness.date + 'T12:00:00'));
 
     if (times.length > 0) {
       const recent = times.sort((a, b) => b.getTime() - a.getTime())[0];

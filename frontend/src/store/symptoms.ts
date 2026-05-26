@@ -13,10 +13,12 @@ export interface SymptomLog {
   date: string; // ISO
   notes: string;
   memberId?: string;
+  endedAt?: string; // ISO — quando il sintomo è stato terminato
 }
 
 export interface DailyWellness {
   date: string; // YYYY-MM-DD
+  ts?: string;  // ISO — timestamp esatto dell'ultimo aggiornamento (real-time)
   sleep: number;     // 0-100
   hydration: number; // 0-100
   energy: number;    // 0-100
@@ -32,9 +34,10 @@ interface SymptomsState {
   addLog: (log: Omit<SymptomLog, 'id' | 'date'>) => void;
   updateLog: (id: string, patch: Partial<Omit<SymptomLog, 'id' | 'date'>>) => void;
   removeLog: (id: string) => void;
+  terminateLog: (id: string) => string; // ritorna l'endedAt
   clearAll: () => void;
   setOwner: (id: string) => void;
-  setWellness: (entry: Omit<DailyWellness, 'date'>) => void;
+  setWellness: (entry: Omit<DailyWellness, 'date' | 'ts'>) => void;
   getHealthScore: () => number;
   getTodayLogs: () => SymptomLog[];
   getRecentLogs: (n?: number) => SymptomLog[];
@@ -47,6 +50,30 @@ function uid(): string {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+const DAY_MS = 86_400_000;
+
+// Auto-termina i sintomi dopo 24h se non già terminati esplicitamente.
+export function effectiveEndedAt(log: SymptomLog): string | undefined {
+  if (log.endedAt) return log.endedAt;
+  const startMs = new Date(log.date).getTime();
+  if (Date.now() - startMs >= DAY_MS) {
+    return new Date(startMs + DAY_MS).toISOString();
+  }
+  return undefined;
+}
+
+export function formatDurationFromMs(ms: number): string {
+  if (ms < 60_000) return 'meno di 1 min';
+  const totalMin = Math.floor(ms / 60_000);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h < 24) return m === 0 ? `${h}h` : `${h}h ${m}min`;
+  const d = Math.floor(h / 24);
+  const remH = h % 24;
+  return remH === 0 ? `${d}g` : `${d}g ${remH}h`;
 }
 
 // Funzione pura esportata — usabile fuori dallo store (home, sintomi, ecc.)
@@ -86,6 +113,14 @@ export const useSymptomsStore = create<SymptomsState>()(
         set((s) => ({ logs: s.logs.filter((l) => l.id !== id) }));
       },
 
+      terminateLog: (id) => {
+        const endedAt = new Date().toISOString();
+        set((s) => ({
+          logs: s.logs.map((l) => (l.id === id && !l.endedAt ? { ...l, endedAt } : l)),
+        }));
+        return endedAt;
+      },
+
       clearAll: () => {
         set({ logs: [], wellness: null, ownerId: null });
       },
@@ -93,7 +128,7 @@ export const useSymptomsStore = create<SymptomsState>()(
       setOwner: (id) => set({ ownerId: id }),
 
       setWellness: (entry) => {
-        set({ wellness: { ...entry, date: today() } });
+        set({ wellness: { ...entry, date: today(), ts: new Date().toISOString() } });
       },
 
       getTodayLogs: () => {
