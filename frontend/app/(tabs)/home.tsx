@@ -76,13 +76,13 @@ export default function HomeScreen() {
           type Raw = { id: string; entityId: string; kind: 'v' | 'a' | 'c'; title: string; iso: string; type: string; status?: StatusVal };
           const out: Raw[] = [];
           vaccines
-            .filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet))
+            .filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet) && v.status !== 'done')
             .forEach((v) => v.nextDate && out.push({ id: `v_${v.id}`, entityId: v.id, kind: 'v', title: v.name, iso: v.nextDate, type: 'Vaccino', status: v.status }));
           antis
-            .filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet))
+            .filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet) && a.status !== 'done')
             .forEach((a) => out.push({ id: `a_${a.id}`, entityId: a.id, kind: 'a', title: a.name, iso: a.nextDate, type: 'Antiparassitario', status: a.status }));
           checks
-            .filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet))
+            .filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet) && c.status !== 'done')
             .forEach((c) => c.nextDate && out.push({ id: `c_${c.id}`, entityId: c.id, kind: 'c', title: c.name, iso: c.nextDate, type: 'Controllo', status: c.status }));
           return out
             .sort((x, y) => x.iso.localeCompare(y.iso))
@@ -109,7 +109,7 @@ export default function HomeScreen() {
             });
         })()
       : reminders
-          .filter((r) => r.enabled && belongsTo(r.memberId, activeHumanId, isDefaultHuman))
+          .filter((r) => r.enabled && r.status !== 'done' && belongsTo(r.memberId, activeHumanId, isDefaultHuman))
           .slice(0, 3)
           .map((r) => {
             const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];

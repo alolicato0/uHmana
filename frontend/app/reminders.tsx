@@ -208,6 +208,7 @@ export default function PianoSaluteScreen() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [oggiExpanded, setOggiExpanded] = useState(true);
+  const [conclusiExpanded, setConclusiExpanded] = useState(false);
   const [selectedReminderId, setSelectedReminderId] = useState<string | null>(null);
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [postponeId, setPostponeId] = useState<string | null>(null);
@@ -260,12 +261,20 @@ export default function PianoSaluteScreen() {
 
   // Filter medications active TODAY for the "Oggi" timeline and Hero
   const todayMeds = medications.filter((r) => {
-    if (r.schedule.kind === 'once') return r.schedule.date === today;
-    if (r.schedule.kind === 'daily') {
-      const start = r.schedule.date;
-      return !start || start <= today;
-    }
-    return true;
+    const dateOk = (() => {
+      if (r.schedule.kind === 'once') return r.schedule.date === today;
+      if (r.schedule.kind === 'daily') {
+        const start = r.schedule.date;
+        return !start || start <= today;
+      }
+      return true;
+    })();
+    if (!dateOk) return false;
+    // Esclude se già presa oggi al suo orario
+    const takenAtSlot = todayRecs.find(
+      (rec) => rec.reminderId === r.id && rec.timeSlot === r.schedule.time && rec.action === 'taken',
+    );
+    return !takenAtSlot;
   });
 
   const upcoming =
@@ -613,6 +622,49 @@ export default function PianoSaluteScreen() {
             )}
           </View>
         )}
+
+        {/* Conclusi oggi (dosi presa) */}
+        {(() => {
+          const takenToday = todayRecs.filter((r) => r.action === 'taken');
+          if (takenToday.length === 0) return null;
+          const medById = new Map(filteredReminders.map((r) => [r.id, r]));
+          return (
+            <View style={{ marginTop: 14 }}>
+              <Pressable onPress={() => setConclusiExpanded((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                <Text style={styles.sectionTitle}>✅ Conclusi oggi</Text>
+                <View style={{ marginLeft: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#DCFCE7' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#16A34A' }}>{takenToday.length}</Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Ionicons name={conclusiExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.muted} />
+              </Pressable>
+              {conclusiExpanded && (
+                <View style={styles.timelineCard}>
+                  {takenToday
+                    .sort((a, b) => b.at.localeCompare(a.at))
+                    .map((rec, i) => {
+                      const med = medById.get(rec.reminderId);
+                      const atDate = new Date(rec.at);
+                      const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+                      const dateLabel = `${atDate.getDate()} ${months[atDate.getMonth()]}`;
+                      const timeLabel = `${String(atDate.getHours()).padStart(2,'0')}:${String(atDate.getMinutes()).padStart(2,'0')}`;
+                      return (
+                        <View key={i} style={[styles.timelineRow, i < takenToday.length - 1 && styles.timelineRowBorder, { paddingHorizontal: 12 }]}>
+                          <Ionicons name="checkmark-circle" size={18} color="#16A34A" />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.timelineName}>{med?.title ?? 'Farmaco'}</Text>
+                            <Text style={{ fontSize: 11, color: colors.muted, marginTop: 2 }}>
+                              Somministrato {dateLabel} alle {timeLabel} · dose {rec.timeSlot}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
         {/* AI Insight */}
         {aiInsight && (

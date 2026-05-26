@@ -158,6 +158,7 @@ export default function SintomiScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [expandedToday, setExpandedToday] = useState(true);
   const [expandedRecent, setExpandedRecent] = useState(false);
+  const [expandedEnded, setExpandedEnded] = useState(false);
 
   // Selectors reattivi: si ri-renderizza quando logs o wellness cambiano
   const allLogs = useSymptomsStore((s) => s.logs);
@@ -176,8 +177,10 @@ export default function SintomiScreen() {
   const recent = logs.slice(0, 6);
 
   const todayKey = localDateKey(new Date());
-  const todayLogs = logs.filter((l) => localDateKey(new Date(l.date)) === todayKey);
-  const recentLogs = logs.filter((l) => localDateKey(new Date(l.date)) !== todayKey).slice(0, 30);
+  const activeLogs = logs.filter((l) => !effectiveEndedAt(l));
+  const endedLogs = logs.filter((l) => !!effectiveEndedAt(l)).slice(0, 50);
+  const todayLogs = activeLogs.filter((l) => localDateKey(new Date(l.date)) === todayKey);
+  const recentLogs = activeLogs.filter((l) => localDateKey(new Date(l.date)) !== todayKey).slice(0, 30);
 
   const openAdd = () => { setEditing(null); setModalOpen(true); };
   const openEdit = (log: SymptomLog) => { setMenuFor(null); setEditing(log); setModalOpen(true); };
@@ -261,6 +264,29 @@ export default function SintomiScreen() {
           ) : (
             <View style={styles.symGrid}>
               {recentLogs.map((l) => (
+                <SymptomCard key={l.id} log={l} todayMode={false} onMenu={() => setMenuFor(l.id)} />
+              ))}
+            </View>
+          )
+        )}
+
+        {/* SINTOMI TERMINATI */}
+        <Pressable onPress={() => setExpandedEnded((v) => !v)} style={[styles.sectionToggle, { marginTop: 16, marginBottom: 8 }]} hitSlop={6}>
+          <Text style={styles.sectionTitle}>Sintomi terminati</Text>
+          {endedLogs.length > 0 && (
+            <View style={styles.countBadge}><Text style={styles.countBadgeTxt}>{endedLogs.length}</Text></View>
+          )}
+          <Ionicons name={expandedEnded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.muted} />
+        </Pressable>
+
+        {expandedEnded && (
+          endedLogs.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Nessun sintomo terminato.</Text>
+            </View>
+          ) : (
+            <View style={styles.symGrid}>
+              {endedLogs.map((l) => (
                 <SymptomCard key={l.id} log={l} todayMode={false} onMenu={() => setMenuFor(l.id)} />
               ))}
             </View>

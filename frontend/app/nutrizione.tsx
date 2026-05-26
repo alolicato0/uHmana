@@ -121,11 +121,20 @@ export default function NutrizioneScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
 
   const [chatOpen, setChatOpen] = useState(false);
+  const [pastMealsExpanded, setPastMealsExpanded] = useState(false);
 
   // ── Derived ──
-  const todayMeals = meals
-    .filter((m) => m.date === today())
-    .sort((a, b) => a.time.localeCompare(b.time));
+  // Pasti recenti (entro 24h) vs passati (>24h dall'inserimento)
+  const DAY_MS = 86_400_000;
+  const mealTs = (m: { date: string; time: string }) =>
+    new Date(`${m.date}T${m.time || '00:00'}:00`).getTime();
+  const recentMeals = meals
+    .filter((m) => Date.now() - mealTs(m) < DAY_MS)
+    .sort((a, b) => mealTs(b) - mealTs(a));
+  const pastMeals = meals
+    .filter((m) => Date.now() - mealTs(m) >= DAY_MS)
+    .sort((a, b) => mealTs(b) - mealTs(a));
+  const todayMeals = recentMeals.slice().sort((a, b) => a.time.localeCompare(b.time));
 
   const lastMeal = todayMeals[todayMeals.length - 1];
   const lastWeight = weightLog[0] ?? (petProfile?.weightKg ? { id: '0', date: today(), kg: petProfile.weightKg } : null);
@@ -265,7 +274,7 @@ export default function NutrizioneScreen() {
           <View style={styles.heroStats}>
             <View style={styles.heroStat}>
               <Text style={styles.heroStatVal}>{todayMeals.length}</Text>
-              <Text style={styles.heroStatLbl}>pasti oggi</Text>
+              <Text style={styles.heroStatLbl}>pasti oggi{pastMeals.length > 0 ? ` · ${meals.length} totali` : ''}</Text>
             </View>
             <View style={styles.heroStatDiv} />
             <View style={styles.heroStat}>
@@ -362,6 +371,60 @@ export default function NutrizioneScreen() {
             </Text>
           )}
         </View>
+
+        {/* ── Nutrizioni passate ── */}
+        {pastMeals.length > 0 && (
+          <View style={{ marginTop: 22 }}>
+            <Pressable onPress={() => setPastMealsExpanded((v) => !v)} style={styles.sectionRow} hitSlop={6}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <Text style={styles.sectionTitle}>Nutrizioni passate</Text>
+                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FEF3C7' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E' }}>{pastMeals.length}</Text>
+                </View>
+              </View>
+              <Ionicons name={pastMealsExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </Pressable>
+            {pastMealsExpanded && (
+              <View style={{ marginTop: 10 }}>
+                {(() => {
+                  const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+                  // Group by date
+                  const byDate = new Map<string, typeof pastMeals>();
+                  pastMeals.forEach((m) => {
+                    const arr = byDate.get(m.date) ?? [];
+                    arr.push(m);
+                    byDate.set(m.date, arr);
+                  });
+                  return Array.from(byDate.entries()).map(([date, items]) => {
+                    const [y, mo, d] = date.split('-').map(Number);
+                    return (
+                      <View key={date} style={{ marginBottom: 14 }}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {d} {months[mo-1]} {y} · {items.length} {items.length === 1 ? 'pasto' : 'pasti'}
+                        </Text>
+                        {items.map((m) => (
+                          <View key={m.id} style={[styles.mealRow, { opacity: 0.85 }]}>
+                            <View style={styles.mealTimeCol}>
+                              <Text style={styles.mealTime}>{m.time}</Text>
+                            </View>
+                            <View style={styles.mealDot} />
+                            <View style={{ flex: 1 }}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ fontSize: 14 }}>{MEAL_EMOJI[m.type]}</Text>
+                                <Text style={styles.mealType}>{MEAL_LABEL[m.type]}</Text>
+                              </View>
+                              <Text style={styles.mealFood}>{m.food}{m.grams ? ` · ${m.grams}g` : ''}</Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  });
+                })()}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* ── Idratazione ── */}
         <View style={{ marginTop: 22 }}>

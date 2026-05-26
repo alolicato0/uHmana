@@ -131,14 +131,15 @@ export default function PrevenzioneScreen() {
   const [chatOpen, setChatOpen] = useState(false);
   const [expandedVaccine, setExpandedVaccine] = useState<string | null>(null);
   const [expandedCheck, setExpandedCheck] = useState<string | null>(null);
-  const [sectionsOpen, setSectionsOpen] = useState<{ upcoming: boolean; vaccines: boolean; anti: boolean; checks: boolean; therapy: boolean }>({
+  const [sectionsOpen, setSectionsOpen] = useState<{ upcoming: boolean; vaccines: boolean; anti: boolean; checks: boolean; therapy: boolean; completed: boolean }>({
     upcoming: false,
     vaccines: false,
     anti: false,
     checks: false,
     therapy: false,
+    completed: false,
   });
-  const toggleSection = (key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy') => {
+  const toggleSection = (key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy' | 'completed') => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSectionsOpen((s) => ({ ...s, [key]: !s[key] }));
   };
@@ -216,18 +217,29 @@ export default function PrevenzioneScreen() {
     setPickerOpen(null);
   }
 
-  const filteredVaccines = useMemo(
+  const allVaccinesMember = useMemo(
     () => vaccines.filter((v) => belongsTo(v.memberId, activePetId, isDefaultPet)),
     [vaccines, activePetId, isDefaultPet],
   );
-  const filteredAntiparasitics = useMemo(
+  const allAntiparasiticsMember = useMemo(
     () => antiparasitics.filter((a) => belongsTo(a.memberId, activePetId, isDefaultPet)),
     [antiparasitics, activePetId, isDefaultPet],
   );
-  const filteredChecks = useMemo(
+  const allChecksMember = useMemo(
     () => checks.filter((c) => belongsTo(c.memberId, activePetId, isDefaultPet)),
     [checks, activePetId, isDefaultPet],
   );
+  const filteredVaccines = useMemo(() => allVaccinesMember.filter((v) => v.status !== 'done'), [allVaccinesMember]);
+  const filteredAntiparasitics = useMemo(() => allAntiparasiticsMember.filter((a) => a.status !== 'done'), [allAntiparasiticsMember]);
+  const filteredChecks = useMemo(() => allChecksMember.filter((c) => c.status !== 'done'), [allChecksMember]);
+  const completedItems = useMemo(() => {
+    type Done = { id: string; kind: 'v' | 'a' | 'c'; name: string; date: string; type: string };
+    const out: Done[] = [];
+    allVaccinesMember.filter((v) => v.status === 'done').forEach((v) => out.push({ id: v.id, kind: 'v', name: v.name, date: v.date, type: 'Vaccino' }));
+    allAntiparasiticsMember.filter((a) => a.status === 'done').forEach((a) => out.push({ id: a.id, kind: 'a', name: a.name, date: a.dateApplied, type: 'Antiparassitario' }));
+    allChecksMember.filter((c) => c.status === 'done').forEach((c) => out.push({ id: c.id, kind: 'c', name: c.name, date: c.date, type: 'Controllo' }));
+    return out.sort((x, y) => y.date.localeCompare(x.date));
+  }, [allVaccinesMember, allAntiparasiticsMember, allChecksMember]);
   const filteredTherapies = useMemo(
     () => therapies.filter((t) => belongsTo(t.memberId, activePetId, isDefaultPet)),
     [therapies, activePetId, isDefaultPet],
@@ -334,7 +346,7 @@ export default function PrevenzioneScreen() {
     );
   }
 
-  function openAndScroll(key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy', ref: React.RefObject<View | null>) {
+  function openAndScroll(key: 'upcoming' | 'vaccines' | 'anti' | 'checks' | 'therapy' | 'completed', ref: React.RefObject<View | null>) {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSectionsOpen((s) => ({ ...s, [key]: true }));
     setTimeout(() => scrollToRef(ref), 60);
@@ -996,6 +1008,40 @@ export default function PrevenzioneScreen() {
                 </View>
               );
             })
+          ))}
+        </View>
+
+        {/* CONCLUSI */}
+        <View style={{ marginTop: 24 }}>
+          <Pressable style={styles.accordionHeader} onPress={() => toggleSection('completed')}>
+            <Text style={styles.sectionTitle}>✅ Conclusi</Text>
+            <View style={styles.accordionRight}>
+              <Text style={styles.accordionCount}>{completedItems.length}</Text>
+              <Ionicons name={sectionsOpen.completed ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+            </View>
+          </Pressable>
+          {sectionsOpen.completed && <View style={{ height: 10 }} />}
+          {sectionsOpen.completed && (completedItems.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>Niente concluso al momento</Text>
+            </View>
+          ) : (
+            completedItems.map((it) => (
+              <View key={`${it.kind}_${it.id}`} style={styles.card}>
+                <View style={styles.cardRow}>
+                  <View style={[styles.cardIcon, { backgroundColor: '#DCFCE7' }]}>
+                    <Text>{it.kind === 'v' ? '💉' : it.kind === 'a' ? '🦟' : '🩺'}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{it.name}</Text>
+                    <Text style={styles.cardSub}>{it.type} · effettuato {formatDateShort(it.date)}</Text>
+                  </View>
+                  <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: '#DCFCE7' }}>
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>Fatto ✓</Text>
+                  </View>
+                </View>
+              </View>
+            ))
           ))}
         </View>
 

@@ -530,6 +530,8 @@ export default function ComportamentoScreen() {
   const getTodayStatus = usePetActivityStore((s) => s.getTodayStatus);
   const getWeekActivity = usePetActivityStore((s) => s.getWeekActivity);
   const getRecentMoods = usePetActivityStore((s) => s.getRecentMoods);
+  const allActivityLog = usePetActivityStore((s) => s.activityLog);
+  const allMoodLog = usePetActivityStore((s) => s.moodLog);
   const allBehaviorFlags = usePetActivityStore((s) => s.behaviorFlags);
   const aiInsight = usePetActivityStore((s) => s.aiInsight);
   const removeBehaviorFlag = usePetActivityStore((s) => s.removeBehaviorFlag);
@@ -544,6 +546,18 @@ export default function ComportamentoScreen() {
   const behaviorFlags = allBehaviorFlags.filter((f) =>
     belongsTo(f.memberId, activePetId, (id) => isDefaultPet('pet', id)),
   );
+
+  // ── Entries passate (>24h) ──
+  const DAY_MS = 86_400_000;
+  const memberFilterFn = (memberId?: string) => belongsTo(memberId, activePetId, (id) => isDefaultPet('pet', id));
+  const moodTs = (m: { date: string }) => new Date(`${m.date}T12:00:00`).getTime();
+  const pastMoods = allMoodLog
+    .filter((m) => memberFilterFn(m.memberId) && Date.now() - moodTs(m) >= DAY_MS)
+    .sort((a, b) => moodTs(b) - moodTs(a));
+  const pastActivities = allActivityLog
+    .filter((a) => memberFilterFn(a.memberId) && Date.now() - new Date(a.date).getTime() >= DAY_MS)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const [pastExpanded, setPastExpanded] = useState(false);
 
   const [statusModal, setStatusModal] = useState(false);
   const [walkModal, setWalkModal] = useState(false);
@@ -876,6 +890,66 @@ export default function ComportamentoScreen() {
               )}
             </View>
           </View>
+
+          {/* ── Attività e umore passati (>24h) ── */}
+          {(pastMoods.length > 0 || pastActivities.length > 0) && (
+            <View>
+              <Pressable onPress={() => setPastExpanded((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} hitSlop={6}>
+                <Text style={s.sectionTitle}>Attività e umore passati</Text>
+                <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: '#FEF3C7' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#92400E' }}>{pastMoods.length + pastActivities.length}</Text>
+                </View>
+                <View style={{ flex: 1 }} />
+                <Ionicons name={pastExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={MUTED} />
+              </Pressable>
+              {pastExpanded && (
+                <View style={[s.card, { marginTop: 8 }]}>
+                  {pastActivities.length > 0 && (
+                    <View style={{ marginBottom: 12 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Attività
+                      </Text>
+                      {pastActivities.slice(0, 20).map((a) => {
+                        const ad = new Date(a.date);
+                        const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+                        return (
+                          <View key={a.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 10 }}>
+                            <Text style={{ fontSize: 18 }}>{a.type === 'passeggiata' ? '🚶' : a.type === 'gioco' ? '🎾' : '🐾'}</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: INK, textTransform: 'capitalize' }}>{a.type} · {a.durationMin}min</Text>
+                              {a.note && <Text style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{a.note}</Text>}
+                            </View>
+                            <Text style={{ fontSize: 11, color: MUTED }}>{ad.getDate()} {months[ad.getMonth()]}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {pastMoods.length > 0 && (
+                    <View>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Umore
+                      </Text>
+                      {pastMoods.slice(0, 20).map((m) => {
+                        const [y, mo, d] = m.date.split('-').map(Number);
+                        const months = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+                        return (
+                          <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 10 }}>
+                            <Text style={{ fontSize: 20 }}>{m.emoji}</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 13, fontWeight: '600', color: INK, textTransform: 'capitalize' }}>{m.level}</Text>
+                              {m.note && <Text style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{m.note}</Text>}
+                            </View>
+                            <Text style={{ fontSize: 11, color: MUTED }}>{d} {months[mo-1]} {y}</Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
 
           {/* ── Comportamenti da monitorare ── */}
           <View>
